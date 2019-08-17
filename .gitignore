@@ -1,0 +1,11 @@
+node_modules
+coverage
+dist
+scrap
+plugins/*
+fetch
+data
+
+.git-*
+!plugins/package.json
+.DS_Store

@@ -1,0 +1,38 @@
+{
+  "name": "frag",
+  "version": "0.0.1",
+  "description": "An asynchronous fragmentation store bridge",
+  "author": {
+    "name": "Blake Regalia",
+    "email": "blake.regalia@gmail.com"
+  },
+  "main": "src/main/module.js",
+  "keywords": [
+    "store"
+  ],
+  "repository": "blake-regalia/frag.js.git",
+  "scripts": {
+    "build": "npx emk"
+  },
+  "devDependencies": {
+    "browserify": "^15.0.0",
+    "gulp": "^3.9.1",
+    "gulp-debug": "^3.2.0",
+    "gulp-if": "^2.0.2",
+    "gulp-less": "^3.4.0",
+    "gulp-plumber": "^1.1.0",
+    "gulp-pug": "^3.3.0",
+    "gulp-rename": "^1.2.2",
+    "gulp-soda": "^0.5.2",
+    "gulp-sourcemaps": "^2.6.3",
+    "gulp-tap": "^1.0.1",
+    "gulp-util": "^3.0.8",
+    "pug": "^2.0.0-rc.4",
+    "vinyl-buffer": "^1.0.1",
+    "vinyl-source-stream": "^2.0.0"
+  },
+  "dependencies": {
+    "es6-promise": "^4.2.2",
+    "isomorphic-fetch": "^2.2.1"
+  }
+}
