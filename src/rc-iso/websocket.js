@@ -1,11 +1,12 @@
-const resource_connection = require('./abstract.js');
+const bkit = require('bkit');
+const ResourceConnection = require('../class/resource-connection.js');
 
 const X_REQUEST_SIZE = 0x01;
 const X_REQUEST_RANGES = 0x02;
 const X_RESPONSE_RANGES = 0xff - X_REQUEST_RANGES;
 const X_RESPONSE_SIZE = 0xff - X_REQUEST_SIZE;
 
-module.exports = class resource_connection_websocket extends resource_connection {
+module.exports = class resource_connection_websocket extends ResourceConnection {
 	constructor(p_url) {
 		super();
 
@@ -32,7 +33,7 @@ module.exports = class resource_connection_websocket extends resource_connection
 				let x_type = at_res[0];
 
 				// prep decoder
-				let kbd_msg = new bkit.buffer_decoder(at_res);
+				let kbd_msg = new bkit.BufferDecoder(at_res);
 
 				// skip first byte
 				kbd_msg.read = 1;

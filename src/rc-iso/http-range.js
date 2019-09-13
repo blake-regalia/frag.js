@@ -1,9 +1,8 @@
-require('es6-promise').polyfill();
 require('isomorphic-fetch');
 
-const resource_connection = require('./abstract.js');
+const ResourceConnection = require('../class/resource-connection.js');
 
-module.exports = class resource_connection_http_range extends resource_connection {
+module.exports = class resource_connection_http_range extends ResourceConnection {
 	constructor(p_url, h_headers={}) {
 		super();
 

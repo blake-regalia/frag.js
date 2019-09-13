@@ -1,4 +1,4 @@
-const composite_resource_connection = require('../composite.js');
+const composite_resource_connection = require('./composite.js');
 
 module.exports = class auto_switching_composite_resource_connection extends composite_resource_connection {
 	constructor(a_krcs=[]) {

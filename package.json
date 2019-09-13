@@ -15,24 +15,13 @@
     "build": "npx emk"
   },
   "devDependencies": {
-    "browserify": "^15.0.0",
-    "gulp": "^3.9.1",
-    "gulp-debug": "^3.2.0",
-    "gulp-if": "^2.0.2",
-    "gulp-less": "^3.4.0",
-    "gulp-plumber": "^1.1.0",
-    "gulp-pug": "^3.3.0",
-    "gulp-rename": "^1.2.2",
-    "gulp-soda": "^0.5.2",
-    "gulp-sourcemaps": "^2.6.3",
-    "gulp-tap": "^1.0.1",
-    "gulp-util": "^3.0.8",
-    "pug": "^2.0.0-rc.4",
-    "vinyl-buffer": "^1.0.1",
-    "vinyl-source-stream": "^2.0.0"
+    "emk": "^1.7.2",
+    "eslint": "^6.3.0",
+    "eslint-plugin-jmacs": "^1.4.0",
+    "jmacs": "^1.4.0"
   },
   "dependencies": {
-    "es6-promise": "^4.2.2",
+    "bkit": "^1.4.1",
     "isomorphic-fetch": "^2.2.1"
   }
 }
