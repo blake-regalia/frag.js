@@ -559,7 +559,7 @@ class AsyncBuffer {
 		}
 
 		// index beyond right-most chunk to merge
-		let i_merge_hi = i_merge_lo + 1;
+		let i_merge_hi = Math.min(i_merge_lo+1, nl_chunks);
 
 		// chunk(s) exist to right
 		if(i_hi < nl_chunks) {
@@ -592,7 +592,7 @@ class AsyncBuffer {
 			}
 
 			// index of merge hi
-			i_merge_hi = i_scan + 1;
+			i_merge_hi = Math.min(i_scan+1, nl_chunks);
 		}
 		// nothing to right; append range directly
 		else {
@@ -920,6 +920,12 @@ class AsyncViewRegion {
 	constructor(h_buffers, ib_start=0, nb_view=Infinity) {
 		this._h_buffers = h_buffers;
 		this._ib_start = ib_start;
+
+		// infinite view length; deduce byte limit from first buffer
+		if(!Number.isFinite(nb_view)) {
+			nb_view = h_buffers[Object.keys(h_buffers)[0]].bytes;
+		}
+
 		this._nb_view = nb_view;
 	}
 
@@ -930,16 +936,21 @@ class AsyncViewRegion {
 	skip(nb_skip) {
 		this._ib_start += nb_skip;
 		this._nb_view -= nb_skip;
+		if(this._nb_view < 0) {
+			debugger;
+		}
 		return this;
 	}
 
 	view(ib_rel=0, nb_view=Infinity) {
 		// infinite view length is till end (cannot expand)
 		if(!Number.isFinite(nb_view)) {
+			debugger;
 			nb_view = this._nb_view - ib_rel;
 		}
 		// negative view length is relative to end length
 		else if(nb_view < 0) {
+			debugger;
 			nb_view = this._nb_view - ib_rel + nb_view;
 		}
 
@@ -1005,13 +1016,13 @@ async function AsyncBufferDecoder$refresh(k_self) {
 		// advance read pointer
 		let ib_advance = ib_read + k_self._nb_chunk;
 
-		// TODO: limit chunk to view size?
+		// TODO: limit chunk request to view size?
 
 		// reload cache
-		k_self._at_cache = await k_self._kav.slice(ib_read, ib_advance);  // eslint-disable-line require-atomic-updates
+		let at_cache = k_self._at_cache = await k_self._kav.slice(ib_read, ib_advance);  // eslint-disable-line require-atomic-updates
 
 		// update pointer
-		k_self._ib_read = ib_advance;  // eslint-disable-line require-atomic-updates
+		k_self._ib_read = ib_read + at_cache.length;  // eslint-disable-line require-atomic-updates
 	}
 
 	// fetch cache
@@ -1025,12 +1036,130 @@ async function AsyncBufferDecoder$refresh(k_self) {
 }
 
 
+async function AsyncBufferDecoder$byte(k_self) {
+	let at_cache = await AsyncBufferDecoder$refresh(k_self);
+
+	let xb_value = at_cache[0];
+
+	k_self._at_cache = at_cache.subarray(1);  // eslint-disable-line require-atomic-updates
+
+	return xb_value;
+}
+
+/* eslint-disable require-atomic-updates */
+async function AsyncBufferDecoder$vuint(k_self) {
+	let at_cache = await AsyncBufferDecoder$refresh(k_self);
+	let nb_cache = at_cache.length;
+
+	let ib_local = 0;
+
+	// 1 byte value
+	let xb_local = at_cache[ib_local];
+
+	// first byte is end of int
+	if(xb_local < 0x80) {
+		k_self._at_cache = at_cache.slice(1);
+		return xb_local;
+	}
+
+	// set vuint value to lower value
+	let x_value = xb_local & 0x7f;
+
+
+	// cache ran out; refresh
+	if(nb_cache < 2) {
+		at_cache = concat_2(at_cache, await AsyncBufferDecoder$refresh(k_self));
+	}
+
+	// 2 bytes; keep going
+	xb_local = at_cache[ib_local+1];
+
+	// add lower value
+	x_value |= (xb_local & 0x7f) << 7;
+
+	// last byte of number
+	if(xb_local < 0x80) {
+		k_self._at_cache = at_cache.slice(2);
+		return x_value;
+	}
+
+
+	// cache ran out; refresh
+	if(nb_cache < 3) {
+		at_cache = concat_2(at_cache, await AsyncBufferDecoder$refresh(k_self));
+	}
+
+	// 3 bytes; keep going
+	xb_local = at_cache[ib_local+2];
+
+	// add lower value
+	x_value |= (xb_local & 0x7f) << 14;
+
+	// last byte of number
+	if(xb_local < 0x80) {
+		k_self._at_cache = at_cache.slice(3);
+		return x_value;
+	}
+
+
+	// cache ran out; refresh
+	if(nb_cache < 4) {
+		at_cache = concat_2(at_cache, await AsyncBufferDecoder$refresh(k_self));
+	}
+
+	// 4 bytes; keep going
+	xb_local = at_cache[ib_local+3];
+
+	// add lower value
+	x_value |= (xb_local & 0x7f) << 21;
+
+	// last byte of number
+	if(xb_local < 0x80) {
+		k_self._at_cache = at_cache.slice(4);
+		return x_value;
+	}
+
+
+	// cache ran out; refresh
+	if(nb_cache < 5) {
+		at_cache = concat_2(at_cache, await AsyncBufferDecoder$refresh(k_self));
+	}
+
+	// 5 bytes; be cautious
+	xb_local = at_cache[ib_local+4];
+
+	// safe to shift
+	let x_hi = (xb_local & 0x7f);
+	if(x_hi < 0x07) {
+		// add lower value
+		x_value |= x_hi << 28;
+	}
+	// cannot shift
+	else {
+		// shift by means of float multiplication
+		x_value += (x_hi * 0x10000000);
+	}
+
+	// last byte of number
+	if(xb_local < 0x80) {
+		k_self._at_cache = at_cache.slice(5);
+		return x_value;
+	}
+
+
+	// 6 bytes (or more)
+	throw new Error(`decoding integers of 6 bytes or more not supported by '.vuint()'; try using '.vbigint()' instead`);
+}
+/* eslint-enable require-atomic-updates */
+
+
 class AsyncBufferDecoder {
 	constructor(kav, nb_chunk=NB_DEFAULT_BUFFER_CHUNK) {
 		this._kav = kav;
 		this._ib_read = 0;
 		this._nb_chunk = nb_chunk || NB_DEFAULT_BUFFER_CHUNK;
 		this._at_cache = AT_EMPTY;
+		this._kl_cache = new AsyncLock();
 	}
 
 	get read() {
@@ -1042,21 +1171,28 @@ class AsyncBufferDecoder {
 	}
 
 	async byte() {
-		let at_cache = await AsyncBufferDecoder$refresh(this);
+		// acquire cache lock
+		await this._kl_cache.acquire();
 
-		let xb_value = at_cache[0];
+		// read byte
+		let xb_value = await AsyncBufferDecoder$byte(this);
 
-		this._at_cache = at_cache.subarray(1);
+		// release cache lock
+		this._kl_cache.release();
 
+		// return value
 		return xb_value;
 	}
 
 	async typed_array() {
+		// acquire cache lock
+		await this._kl_cache.acquire();
+
 		// typed array type
-		let x_type = await this.byte();
+		let x_type = await AsyncBufferDecoder$byte(this);
 
 		// nubmer of elements in array
-		let nl_items = await this.vuint();
+		let nl_items = await AsyncBufferDecoder$vuint(this);
 
 		// typed array class
 		let dc_typed_array = bkit.constants.H_ENCODING_TO_TYPED_ARRAY[x_type];
@@ -1067,13 +1203,26 @@ class AsyncBufferDecoder {
 		// create async typed array
 		let kat_array = new AsyncTypedArray(this.view(0, nb_array), dc_typed_array, nl_items);
 
-		// advance cache
-		this._at_cache = this._at_cache.slice(nb_array);
+		// went beyond cache; reset and update read position
+		if(nb_array >= this._at_cache.length) {
+			this._ib_read = this.read + nb_array;
+			this._at_cache = AT_EMPTY;
+		}
+		// preserve cache
+		else {
+			this._at_cache = this._at_cache.slice(nb_array);
+		}
+
+		// relase cache lock
+		this._kl_cache.release();
 
 		return kat_array;
 	}
 
 	async ntu8_string() {
+		// acquire cache lock
+		await this._kl_cache.acquire();
+
 		let at_cache = AT_EMPTY;
 
 		// while missing null-terminator
@@ -1092,112 +1241,25 @@ class AsyncBufferDecoder {
 		// update cache
 		this._at_cache = at_cache.slice(ib_nt+1);
 
+		// relase cache lock
+		this._kl_cache.release();
+
 		// decode string
 		return bkit.decodeUtf8(at_string);
 	}
 
 	async vuint() {
-		let at_cache = await AsyncBufferDecoder$refresh(this);
-		let nb_cache = at_cache.length;
+		// acquire cache lock
+		await this._kl_cache.acquire();
 
-		let ib_local = 0;
+		// read vuint
+		let x_value = await AsyncBufferDecoder$vuint(this);
 
-		// 1 byte value
-		let xb_local = at_cache[ib_local];
+		// relase cache lock
+		this._kl_cache.release();
 
-		// first byte is end of int
-		if(xb_local < 0x80) {
-			this._at_cache = at_cache.slice(1);
-			return xb_local;
-		}
-
-		// set vuint value to lower value
-		let x_value = xb_local & 0x7f;
-
-
-		// cache ran out; refresh
-		if(nb_cache < 2) {
-			at_cache = concat_2(at_cache, await AsyncBufferDecoder$refresh(this));
-		}
-
-		// 2 bytes; keep going
-		xb_local = at_cache[ib_local+1];
-
-		// add lower value
-		x_value |= (xb_local & 0x7f) << 7;
-
-		// last byte of number
-		if(xb_local < 0x80) {
-			this._at_cache = at_cache.slice(2);
-			return x_value;
-		}
-
-
-		// cache ran out; refresh
-		if(nb_cache < 3) {
-			at_cache = concat_2(at_cache, await AsyncBufferDecoder$refresh(this));
-		}
-
-		// 3 bytes; keep going
-		xb_local = at_cache[ib_local+2];
-
-		// add lower value
-		x_value |= (xb_local & 0x7f) << 14;
-
-		// last byte of number
-		if(xb_local < 0x80) {
-			this._at_cache = at_cache.slice(3);
-			return x_value;
-		}
-
-
-		// cache ran out; refresh
-		if(nb_cache < 4) {
-			at_cache = concat_2(at_cache, await AsyncBufferDecoder$refresh(this));
-		}
-
-		// 4 bytes; keep going
-		xb_local = at_cache[ib_local+3];
-
-		// add lower value
-		x_value |= (xb_local & 0x7f) << 21;
-
-		// last byte of number
-		if(xb_local < 0x80) {
-			this._at_cache = at_cache.slice(4);
-			return x_value;
-		}
-
-
-		// cache ran out; refresh
-		if(nb_cache < 5) {
-			at_cache = concat_2(at_cache, await AsyncBufferDecoder$refresh(this));
-		}
-
-		// 5 bytes; be cautious
-		xb_local = at_cache[ib_local+4];
-
-		// safe to shift
-		let x_hi = (xb_local & 0x7f);
-		if(x_hi < 0x07) {
-			// add lower value
-			x_value |= x_hi << 28;
-		}
-		// cannot shift
-		else {
-			// shift by means of float multiplication
-			x_value += (x_hi * 0x10000000);
-		}
-
-		// last byte of number
-		if(xb_local < 0x80) {
-			this._at_cache = at_cache.slice(5);
-			return x_value;
-		}
-
-
-		// 6 bytes (or more)
-		throw new Error(`decoding integers of 6 bytes or more not supported by '.vuint()'; try using '.vbigint()' instead`);
+		// return value
+		return x_value;
 	}
 }
 
