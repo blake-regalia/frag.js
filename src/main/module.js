@@ -257,7 +257,7 @@ function chunks$wedges(a_chunks, a_values, a_ranges, i_left) {
 
 
 async function AsyncBuffer$fill_left(k_self, i_chunk, i_ask_lo, i_ask_hi) {
-	let a_chunks = k_self._chunks;
+	let a_chunks = k_self._a_chunks;
 
 	// deduce gaps that need to be filled
 	let {
@@ -289,7 +289,7 @@ async function AsyncBuffer$fill_left(k_self, i_chunk, i_ask_lo, i_ask_hi) {
 }
 
 async function AsyncBuffer$fill_right(k_self, i_chunk, i_ask_lo, i_ask_hi) {
-	let a_chunks = k_self._chunks;
+	let a_chunks = k_self._a_chunks;
 
 	// deduce gaps that need to be filled
 	let {
@@ -321,7 +321,7 @@ async function AsyncBuffer$fill_right(k_self, i_chunk, i_ask_lo, i_ask_hi) {
 }
 
 async function AsyncBuffer$fill_both(k_self, i_chunk, i_ask_lo, i_ask_hi) {
-	let a_chunks = k_self._chunks;
+	let a_chunks = k_self._a_chunks;
 
 	// deduce gaps on left side
 	let {
@@ -387,9 +387,9 @@ async function AsyncBuffer$fill_both(k_self, i_chunk, i_ask_lo, i_ask_hi) {
 class AsyncBuffer {
 	constructor(krc) {
 		this._krc = krc;
-		this._chunks = [];
-		this._fetches = [];
-		this._retrievals = [];
+		this._a_chunks = [];
+		this._a_fetches = [];
+		this._a_retrievals = [];
 		this._kl_chunks = new AsyncLock();
 		this.fetch = this.fetch_direct;
 	}
@@ -400,6 +400,35 @@ class AsyncBuffer {
 
 	fresh() {
 		return new AsyncBuffer(this._krc);
+	}
+
+
+	async validate() {
+		let a_chunks = this._a_chunks;
+
+		for(let g_chunk of a_chunks) {
+			let {
+				lo: ib_chunk_lo,
+				hi: ib_chunk_hi,
+				data: at_data,
+			} = g_chunk;
+
+			let at_fetch = await this._krc.fetch(ib_chunk_lo, ib_chunk_hi);
+
+			let nb_chunk = ib_chunk_hi - ib_chunk_lo;
+			console.assert(at_data.length === at_fetch.length);
+			for(let ib_check=0; ib_check<nb_chunk; ib_check++) {
+				if(at_data[ib_check] !== at_fetch[ib_check]) {
+					return [
+						ib_chunk_lo+ib_check,
+					];
+					// debugger;
+					// throw new Error(`data / fetch mismatch`);
+				}
+			}
+		}
+
+		return null;
 	}
 
 
@@ -422,8 +451,8 @@ class AsyncBuffer {
 		});
 
 		// fetch all ranges
-		let a_retrievals = this._retrievals;
-		this._krc.fetch_ranges(this._fetches).forEach((at_fetch, i_fetch) => {
+		let a_retrievals = this._a_retrievals;
+		this._krc.fetch_ranges(this._a_fetches).forEach((at_fetch, i_fetch) => {
 			// resolve promise
 			a_retrievals[i_fetch](at_fetch);
 		});
@@ -447,23 +476,59 @@ class AsyncBuffer {
 
 	fetch_queue(i_ask_lo, i_ask_hi) {
 		return new Promise((fk_fetch) => {
-			this._fetches.push([i_ask_lo, i_ask_hi]);
-			this._retrievals.push(fk_fetch);
+			this._a_fetches.push([i_ask_lo, i_ask_hi]);
+			this._a_retrievals.push(fk_fetch);
 		});
+	}
+
+	// returns the number of bytes in cache following the given byte position
+	cached(ib_ask_lo) {
+		let a_chunks = this._a_chunks;
+
+		// binary search
+		let i_lo = 0;
+		let i_hi = a_chunks.length;
+		while(i_lo < i_hi) {
+			let i_mid = (i_lo + i_hi) >>> 1;
+			let g_mid = a_chunks[i_mid];
+			let {
+				lo: ib_chunk_lo,
+				hi: ib_chunk_hi,
+			} = g_mid;
+
+			// move right
+			if(ib_ask_lo >= ib_chunk_hi) {
+				i_lo = i_mid + 1;
+			}
+			// move left
+			else if(ib_ask_lo < ib_chunk_lo) {
+				i_hi = i_mid;
+			}
+			// hit; return number of remaining bytes in chunk
+			else {
+				return ib_chunk_hi - ib_ask_lo;
+			}
+		}
+
+		// none
+		return 0;
 	}
 
 	async slice(ib_ask_lo, ib_ask_hi) {
 		// acquire chunks lock
 		await this._kl_chunks.acquire();
 
-		let a_chunks = this._chunks;
+		let a_chunks = this._a_chunks;
 		let nl_chunks = a_chunks.length;
 
 		// byte length
 		let nl_buffer = this._krc.bytes;
 
 		// lo is out of range
-		if(ib_ask_lo >= nl_buffer) throw new RangeError('`ib_ask_lo` out of bounds');
+		if(ib_ask_lo >= nl_buffer) {
+			await this.validate();
+			throw new RangeError('`ib_ask_lo` out of bounds');
+		}
 
 		// put hi in range
 		if(ib_ask_hi > this._krc.bytes) ib_ask_hi = nl_buffer;
@@ -507,20 +572,20 @@ class AsyncBuffer {
 			let i_mid = (i_lo + i_hi) >>> 1;
 			let g_mid = a_chunks[i_mid];
 			let {
-				lo: i_chunk_lo,
-				hi: i_chunk_hi,
+				lo: ib_chunk_lo,
+				hi: ib_chunk_hi,
 			} = g_mid;
 
 			// move right
-			if(ib_ask_lo >= i_chunk_hi) {
+			if(ib_ask_lo >= ib_chunk_hi) {
 				i_lo = i_mid + 1;
 			}
 			// move left
-			else if(ib_ask_lo < i_chunk_lo) {
+			else if(ib_ask_lo < ib_chunk_lo) {
 				i_hi = i_mid;
 			}
 			// target completely within this chunk
-			else if(ib_ask_hi <= i_chunk_hi) {
+			else if(ib_ask_hi <= ib_chunk_hi) {
 				// release chunks lock
 				this._kl_chunks.release();
 
@@ -533,7 +598,7 @@ class AsyncBuffer {
 				i_hi = i_mid + 1;
 
 				// push fetch lo to chunk hi
-				ib_fetch_lo = i_chunk_hi;
+				ib_fetch_lo = ib_chunk_hi;
 
 				// merge left
 				b_merge_left = true;
@@ -563,8 +628,6 @@ class AsyncBuffer {
 
 		// chunk(s) exist to right
 		if(i_hi < nl_chunks) {
-			debugger;
-
 			// scan index
 			let i_scan = i_hi;
 
@@ -584,15 +647,22 @@ class AsyncBuffer {
 				// advance beyond next chunk
 				ib_fetch = ib_chunk_hi;
 
-				// chunk range exceeds ask; merge right; break loop
-				if(ib_fetch >= ib_ask_hi) {
-					b_merge_right = true;
-					break;
-				}
+				// chunk range exceeds ask; break loop
+				if(ib_fetch >= ib_ask_hi) break;
 			}
 
-			// index of merge hi
-			i_merge_hi = Math.min(i_scan+1, nl_chunks);
+			// ask touches or overlaps chunk
+			if(ib_ask_hi >= a_chunks[i_scan].lo) {
+				// merge right
+				b_merge_right = true;
+
+				// set merge hi
+				i_merge_hi = Math.min(i_scan+1, nl_chunks);
+			}
+			// set merge hi
+			else {
+				i_merge_hi = i_scan;
+			}
 		}
 		// nothing to right; append range directly
 		else {
@@ -651,13 +721,10 @@ class AsyncBuffer {
 			ib_write = at_left.length;
 		}
 
-		// fetch write index
-		let i_fetch_write = 0;
-
 		// each fetch/chunk pair
-		for(;;) {
+		for(let i_fetch_copy=0; ib_write<cb_merge;) {
 			// ref fetch data
-			let at_fetch = a_fetched[i_fetch_write++];
+			let at_fetch = a_fetched[i_fetch_copy++];
 
 			// copy fetch data to merge buffer
 			at_merge.set(at_fetch, ib_write);
@@ -671,7 +738,7 @@ class AsyncBuffer {
 				let at_chunk = a_chunks[i_merge++].data;
 
 				// copy to merge buffer
-				at_merge.set(at_chunk);
+				at_merge.set(at_chunk, ib_write);
 
 				// update write position
 				ib_write += at_chunk.length;
@@ -689,6 +756,14 @@ class AsyncBuffer {
 			data: at_merge,
 		};
 
+		// invalid
+		let at_check = await this.fetch(ib_merge_lo, ib_merge_hi);
+		for(let ib_check=0; ib_check<at_check.length; ib_check++) {
+			if(at_check[ib_check] !== at_merge[ib_check]) {
+				debugger;
+			}
+		}
+
 		// merge chunks
 		a_chunks.splice(i_merge_lo, i_merge_hi-i_merge_lo, g_merge);
 
@@ -701,7 +776,7 @@ class AsyncBuffer {
 
 	// takes a slice out of buffer from lo inclusive to hi exclusive
 	async slicea(i_ask_lo, i_ask_hi) {
-		let a_chunks = this._chunks;
+		let a_chunks = this._a_chunks;
 		let nl_chunks = a_chunks.length;
 
 		// byte length
@@ -885,6 +960,14 @@ class AsyncView {
 		return new AsyncView(this._kab.fresh(), this._ib_start, this._nb_view);
 	}
 
+	cached(ib_rel) {
+		// ask buffer for size of chunk cache
+		let nb_cached = this._kab.cached(this._ib_start+ib_rel);
+
+		// clamp to remaining size of view
+		return Math.min(nb_cached, this._nb_view-ib_rel);
+	}
+
 	view(ib_rel, nb_view=-1) {
 		if(nb_view < 0) nb_view = this._nb_view - ib_rel;
 		let ib_view = this._ib_start + ib_rel;
@@ -966,12 +1049,26 @@ class AsyncViewRegion {
 	}
 }
 
+const H_TYPED_ARRAY_NAMES_TO_GET_METHOD = {
+	Int8Array: 'getInt8',
+	Uint8Array: 'getUint8',
+	Uint8ClampedArray: 'getUint8',
+	Int16Array: 'getInt16',
+	Uint16Array: 'getUint16',
+	Int32Array: 'getInt32',
+	Uint32Array: 'getUint32',
+	BigInt64Array: 'getBigInt64',
+	BigUint64Array: 'getBigUint64',
+	Float32Array: 'getFloat32',
+	Float64Array: 'getFloat64',
+};
+
 class AsyncTypedArray {
-	constructor(kav_items, dc_type, nl_items=Infinity) {
+	constructor(kav_items, dc_typed_array, nl_items=Infinity) {
 		this._kav_items = kav_items;
-		this._type = dc_type;
+		this._dc_typed_array = dc_typed_array;
 		this._nl_items = nl_items;
-		this._shifts_per_element = Math.log2(dc_type.BYTES_PER_ELEMENT);
+		this._shifts_per_element = Math.log2(dc_typed_array.BYTES_PER_ELEMENT);
 	}
 
 	get size() {
@@ -981,14 +1078,57 @@ class AsyncTypedArray {
 	async at(i_at) {
 		let i_pos = i_at << this._shifts_per_element;
 		let at_slice = await this._kav_items.slice(i_pos, i_pos+1);
-		let at_element = new this._type(at_slice);
+		let at_element = new this._dc_typed_array(at_slice.buffer, at_slice.byteOffset, 1);
 		return at_element[0];
 	}
 
-	async slice(i_lo=0, i_hi=this._nl_items) {
+	async pair(i_lo) {
+		// ref shift-per-element
+		let ns_element = this._shifts_per_element;
+
+		// fetch slice
+		let at_slice = await this._kav_items.slice(i_lo<<ns_element, (i_lo+2)<<ns_element);
+
+		// create data view of slice
+		let av_slice = new DataView(at_slice.buffer, at_slice.byteOffset, at_slice.byteLength);
+
+		// method name
+		let s_get_value = H_TYPED_ARRAY_NAMES_TO_GET_METHOD[this._dc_typed_array.name];
+
+		// create typed array of slice
+		return new this._dc_typed_array([
+			av_slice[s_get_value](0, true),
+			av_slice[s_get_value](1 << ns_element, true),
+		]);
+	}
+
+	async slice(i_lo=0, i_hi=this._nl_items-i_lo) {
 		let ns_element = this._shifts_per_element;
 		let at_slice = await this._kav_items.slice(i_lo<<ns_element, i_hi<<ns_element);
-		return new this._type(at_slice);
+
+		// ref typed array constructor
+		let dc_typed_array = this._dc_typed_array;
+
+		// buffer byte offset of slice
+		let ib_offset = at_slice.byteOffset;
+
+		// not mem-aligned!
+		if(ib_offset % dc_typed_array.BYTES_PER_ELEMENT) {
+			// allocate new mem-aligned segment
+			let ab_aligned = new ArrayBuffer(at_slice.byteLength);
+
+			// create byte-view over segment
+			let atu8_aligned = new Uint8Array(ab_aligned);
+
+			// copy contents over
+			atu8_aligned.set(at_slice);
+
+			// create typed array instance
+			return new dc_typed_array(ab_aligned);
+		}
+
+		// mem-aligned
+		return new this._dc_typed_array(at_slice.buffer, ib_offset, at_slice.byteLength >>> ns_element);
 	}
 
 	next() {
@@ -1010,16 +1150,17 @@ async function AsyncBufferDecoder$refresh(k_self) {
 
 	// cache is empty
 	if(!k_self._at_cache.length) {
+		let kav = k_self._kav;
+		let nb_chunk = k_self._nb_chunk;
+
 		// lock before going async
 		k_self._at_cache = null;
 
 		// advance read pointer
-		let ib_advance = ib_read + k_self._nb_chunk;
-
-		// TODO: limit chunk request to view size?
+		let ib_advance = ib_read + Math.min(kav.cached(ib_read) || nb_chunk, nb_chunk);
 
 		// reload cache
-		let at_cache = k_self._at_cache = await k_self._kav.slice(ib_read, ib_advance);  // eslint-disable-line require-atomic-updates
+		let at_cache = k_self._at_cache = await kav.slice(ib_read, ib_advance);  // eslint-disable-line require-atomic-updates
 
 		// update pointer
 		k_self._ib_read = ib_read + at_cache.length;  // eslint-disable-line require-atomic-updates
