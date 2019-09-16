@@ -391,11 +391,17 @@ class AsyncBuffer {
 		this._a_fetches = [];
 		this._a_retrievals = [];
 		this._kl_chunks = new AsyncLock();
+		this._cb_footprint = 0;
+		this._cb_footprint_last_update = 0;
 		this.fetch = this.fetch_direct;
 	}
 
 	get bytes() {
 		return this._krc.bytes;
+	}
+
+	get footprint() {
+		return this._cb_footprint;
 	}
 
 	fresh() {
@@ -547,6 +553,9 @@ class AsyncBuffer {
 
 			// insert
 			a_chunks.push(g_chunk);
+
+			// increment footprint size
+			this._cb_footprint += at_add.length;
 
 			// release chunks lock
 			this._kl_chunks.release();
@@ -721,6 +730,9 @@ class AsyncBuffer {
 			ib_write = at_left.length;
 		}
 
+		// footprint size
+		let cb_footprint = this._cb_footprint;
+
 		// each fetch/chunk pair
 		for(let i_fetch_copy=0; ib_write<cb_merge;) {
 			// ref fetch data
@@ -731,6 +743,9 @@ class AsyncBuffer {
 
 			// update write position
 			ib_write += at_fetch.length;
+
+			// increment footprint size
+			cb_footprint += at_fetch.length;
 
 			// chunk to right
 			if(i_merge < i_merge_hi) {
@@ -749,6 +764,9 @@ class AsyncBuffer {
 			}
 		}
 
+		// update footprint size
+		this._cb_footprint = cb_footprint;
+
 		// create chunk
 		let g_merge = {
 			lo: ib_merge_lo,
@@ -756,19 +774,24 @@ class AsyncBuffer {
 			data: at_merge,
 		};
 
-		// invalid
-		let at_check = await this.fetch(ib_merge_lo, ib_merge_hi);
-		for(let ib_check=0; ib_check<at_check.length; ib_check++) {
-			if(at_check[ib_check] !== at_merge[ib_check]) {
-				debugger;
-			}
-		}
+		// // invalid
+		// let at_check = await this.fetch(ib_merge_lo, ib_merge_hi);
+		// for(let ib_check=0; ib_check<at_check.length; ib_check++) {
+		// 	if(at_check[ib_check] !== at_merge[ib_check]) {
+		// 		debugger;
+		// 	}
+		// }
 
 		// merge chunks
 		a_chunks.splice(i_merge_lo, i_merge_hi-i_merge_lo, g_merge);
 
 		// release chunks lock
 		this._kl_chunks.release();
+
+		if(cb_footprint > this._cb_footprint_last_update + (1024*256)) {
+			console.log(`buffer footprint: ${cb_footprint / 1024 / 1024} MiB`);
+			this._cb_footprint_last_update = cb_footprint;
+		}
 
 		// return slice of chunk
 		return chunk$within(g_merge, ib_ask_lo, ib_ask_hi);
@@ -968,6 +991,14 @@ class AsyncView {
 		return Math.min(nb_cached, this._nb_view-ib_rel);
 	}
 
+	pluck(ib_lo, nb_min) {
+		// set minimum fetch size, opting for longer cache if available
+		let nb_fetch = Math.max(nb_min, this.cached(ib_lo));
+
+		// fetch chunk for testing
+		return this.slice(ib_lo, ib_lo+nb_fetch);
+	}
+
 	view(ib_rel, nb_view=-1) {
 		if(nb_view < 0) nb_view = this._nb_view - ib_rel;
 		let ib_view = this._ib_start + ib_rel;
@@ -1041,11 +1072,13 @@ class AsyncViewRegion {
 		return new AsyncViewRegion(this._h_buffers, this._ib_start+ib_rel, nb_view);
 	}
 
-	select(s_region) {
+	select(s_region, kav_ref=null) {
 		let kab_select = this._h_buffers[s_region];
 		if(!kab_select) throw new Error(`AsyncViewRegion does not have a region labeled '${s_region}'`);
 
-		return new AsyncView(kab_select, this._ib_start, this._nb_view);
+		if(!kav_ref) kav_ref = this;
+
+		return new AsyncView(kab_select, kav_ref._ib_start, kav_ref._nb_view);
 	}
 }
 
@@ -1076,10 +1109,29 @@ class AsyncTypedArray {
 	}
 
 	async at(i_at) {
-		let i_pos = i_at << this._shifts_per_element;
-		let at_slice = await this._kav_items.slice(i_pos, i_pos+1);
-		let at_element = new this._dc_typed_array(at_slice.buffer, at_slice.byteOffset, 1);
-		return at_element[0];
+		// ref shift-per-element
+		let ns_element = this._shifts_per_element;
+
+		// byte index of item start
+		let ib_lo = i_at << ns_element;
+
+		// fetch slice
+		let at_slice = await this._kav_items.slice(ib_lo, (ib_lo+1) << ns_element);
+
+		// create data view of slice
+		let av_slice = new DataView(at_slice.buffer, at_slice.byteOffset, at_slice.byteLength);
+
+		// method name
+		let s_get_value = H_TYPED_ARRAY_NAMES_TO_GET_METHOD[this._dc_typed_array.name];
+
+		// decode and return elemenet value
+		return av_slice[s_get_value](0, true);
+
+		// // create typed array view
+		// let at_element = new this._dc_typed_array(at_slice.buffer, at_slice.byteOffset, 1);
+
+		// // return element value
+		// return at_element[0];
 	}
 
 	async pair(i_lo) {
@@ -1402,6 +1454,33 @@ class AsyncBufferDecoder {
 		// return value
 		return x_value;
 	}
+
+	slice(ib_lo=0, ib_hi=Infinity) {
+		return this._kav.slice(ib_lo, ib_hi);
+	}
+
+	// async cache(nb_minimum=1) {
+	// 	// cache meets minimum size requirement; return as is
+	// 	if(this._at_cache.length >= nb_minimum) {
+	// 		return this._at_cache;
+	// 	}
+
+	// 	// acquire cache lock
+	// 	await this._kl_cache.acquire();
+
+	// 	//
+	// 	let at_out = AT_EMPTY;
+
+	// 	// refresh cache
+	// 	while(at_out.length < nb_minimum) {
+	// 		at_out = bkit.concat_2(at_out, await AsyncBufferDecoder$refresh(this));
+	// 	}
+
+	// 	// save 
+
+	// 	// return
+	// 	return at_out;
+	// }
 }
 
 function mk_new(dc_class) {
