@@ -34,356 +34,6 @@ function chunk$within(g_chunk, i_ask_lo, i_ask_hi) {
 	return g_chunk.data.subarray(i_ask_lo-i_lo, i_ask_hi-i_lo);
 }
 
-// merges given chunk data with chunk to the left
-function chunks$merge_left(a_chunks, at_data, i_left) {
-	let g_chunk = a_chunks[i_left];
-
-	let nl_add = at_data.length;
-	let at_left = g_chunk.data;
-	let nl_left = at_left.length;
-	let at_chunk = new Uint8Array(nl_left+nl_add);
-	at_chunk.set(at_left);
-	at_chunk.set(at_data, nl_left);
-
-	// merge into chunk
-	g_chunk.hi += nl_add;
-	g_chunk.data = at_chunk;
-
-	return g_chunk;
-}
-
-// merges given chunk data with chunk to the right
-function chunks$merge_right(a_chunks, at_data, i_right) {
-	let g_chunk = a_chunks[i_right];
-
-	let nl_add = at_data.length;
-	let at_right = g_chunk.data;
-	let at_chunk = new Uint8Array(nl_add+at_right.length);
-	at_chunk.set(at_data);
-	at_chunk.set(at_right, nl_add);
-
-	// merge into chunk
-	g_chunk.lo -= nl_add;
-	g_chunk.data = at_chunk;
-
-	return g_chunk;
-}
-
-function chunks$gaps_left(a_chunks, i_chunk, i_ask_lo) {
-	let i_chunk_lo = a_chunks[i_chunk].lo;
-
-	let a_gaps = [];
-	let b_dangle = false;
-
-	// scan leftwards
-	let i_scan = i_chunk - 1;
-	let h_scan = a_chunks[i_scan];
-	for(;;) {
-		let {
-			lo: i_scan_lo,
-			hi: i_scan_hi,
-		} = h_scan;
-
-		// add gap range to list
-		a_gaps.push([i_scan_hi, i_chunk_lo]);
-
-		// no more scans needed
-		if(i_scan_lo <= i_ask_lo) {
-			break;
-		}
-		// no more chunks left
-		else if(!i_scan) {
-			// still need bytes at head
-			if(i_ask_lo < i_scan_lo) {
-				// push last gap range
-				a_gaps.push([i_ask_lo, i_scan_lo]);
-
-				// this chunk will merge right
-				b_dangle = true;
-			}
-
-			break;
-		}
-
-		// next chunk
-		h_scan = a_chunks[--i_scan];
-
-		// shift pointer
-		i_chunk_lo = i_scan_lo;
-	}
-
-	return {
-		gaps: a_gaps,
-		dangle: b_dangle,
-		scan: i_scan,
-	};
-}
-
-function chunks$gaps_right(a_chunks, i_chunk, i_ask_hi) {
-	let i_scan_max = a_chunks.length - 1;
-	let i_chunk_hi = a_chunks[i_chunk].hi;
-
-	let a_gaps = [];
-	let b_dangle = false;
-
-	// scan rightwards
-	let i_scan = i_chunk + 1;
-	let h_scan = a_chunks[i_scan];
-	for(;;) {
-		let {
-			lo: i_scan_lo,
-			hi: i_scan_hi,
-		} = h_scan;
-
-		// add gap range to list
-		a_gaps.push([i_chunk_hi, i_scan_lo]);
-
-		// no more scans needed
-		if(i_ask_hi <= i_scan_hi) {
-			break;
-		}
-		// no more chunks left
-		else if(i_scan === i_scan_max) {
-			// still need bytes at tail
-			if(i_ask_hi > i_scan_hi) {
-				// push last gap range
-				a_gaps.push([i_scan_hi, i_ask_hi]);
-
-				// this chunk will merge left
-				b_dangle = true;
-			}
-
-			break;
-		}
-
-		// next chunk
-		h_scan = a_chunks[++i_scan];
-
-		// shift pointer
-		i_chunk_hi = i_scan_hi;
-	}
-
-	return {
-		gaps: a_gaps,
-		dangle: b_dangle,
-		scan: i_scan,
-	};
-}
-
-// merges given chunk data with chunks on left and right sides
-function chunks$wedge(a_chunks, at_data, i_left) {
-	let {
-		lo: i_lo,
-		data: at_left,
-	} = a_chunks[i_left];
-
-	let {
-		hi: i_hi,
-		data: at_right,
-	} = a_chunks[i_left+1];
-
-	let nb_left = at_left.length;
-	let nb_wedge = at_data.length;
-	let nb_right = at_right.length;
-	let nb_chunk = nb_left + nb_wedge + nb_right;
-	let at_chunk = new Uint8Array(nb_chunk);
-	at_chunk.set(at_left);
-	at_chunk.set(at_data, nb_left);
-	at_chunk.set(at_right, nb_left+nb_wedge);
-
-	// create new chunk
-	let g_chunk = {
-		lo: i_lo,
-		hi: i_hi,
-		data: at_chunk,
-	};
-
-	// replace 2 chunks with 1: remove and insert
-	a_chunks.splice(i_left, 2, g_chunk);
-
-	return g_chunk;
-}
-
-// merges multiples chunk values with chunks on left and right sides
-function chunks$wedges(a_chunks, a_values, a_ranges, i_left) {
-	let nl_ranges = a_ranges.length;
-
-	// byte count of output
-	let cb_output = 0;
-
-	// count chunk sizes
-	for(let i_range=0, i_chunk=i_left; i_range<nl_ranges; i_range++, i_chunk++) {
-		let g_chunk = a_chunks[i_left];
-		cb_output += g_chunk.hi - g_chunk.lo;
-	}
-
-	// count wedge sizes
-	for(let i_value=0; i_value<nl_ranges; i_value++) {
-		cb_output += a_values[i_value].length;
-	}
-
-	// output buffer
-	let at_output = new Uint8Array(cb_output);
-
-	// each chunk/wedge
-	let i_write = 0;
-	for(let i_value=0, i_chunk=i_left; i_value<nl_ranges; i_value++, i_chunk++) {
-		// write chunk to output
-		let at_chunk = a_chunks[i_chunk];
-		at_output.set(at_chunk, i_write);
-		i_write += at_chunk.length;
-
-		// write wedge to output
-		let at_value = a_values[i_value];
-		at_output.set(at_value, i_write);
-		i_write += at_value.length;
-	}
-
-	// terminal chunk
-	at_output.set(a_chunks[i_left+nl_ranges], i_write);
-
-	// create output
-	let h_output = {
-		lo: a_ranges[0].lo,
-		hi: a_ranges[nl_ranges].hi,
-		data: at_output,
-	};
-
-	// replace n chunks with 1: remove and insert
-	a_chunks.splice(i_left, nl_ranges+1, h_output);
-
-	return h_output;
-}
-
-
-async function AsyncBuffer$fill_left(k_self, i_chunk, i_ask_lo, i_ask_hi) {
-	let a_chunks = k_self._a_chunks;
-
-	// deduce gaps that need to be filled
-	let {
-		gaps: a_gaps,
-		dangle: b_dangle,
-		scan: i_scan,
-	} = chunks$gaps_left(a_chunks, i_chunk, i_ask_lo);
-
-	// fetch all gap ranges
-	let a_fetched = await k_self._krc.fetch_ranges(a_gaps);
-
-	// prep result after fitting chunks into place
-	let g_chunk;
-
-	// leftmost chunk merges right
-	if(b_dangle) {
-		// merge dangle first
-		chunks$merge_right(a_chunks, a_fetched.shift(), i_scan);
-
-		// don't wedge this chunk
-		a_gaps.shift();
-	}
-
-	// insert wedges
-	g_chunk = chunks$wedges(a_chunks, a_fetched, a_gaps, i_scan);
-
-	// final chunk
-	return chunk$within(g_chunk, i_ask_lo, i_ask_hi);
-}
-
-async function AsyncBuffer$fill_right(k_self, i_chunk, i_ask_lo, i_ask_hi) {
-	let a_chunks = k_self._a_chunks;
-
-	// deduce gaps that need to be filled
-	let {
-		gaps: a_gaps,
-		dangle: b_dangle,
-		scan: i_scan,
-	} = chunks$gaps_right(a_chunks, i_chunk, i_ask_hi);
-
-	// fetch all gap ranges
-	let a_fetched = await k_self._krc.fetch_ranges(a_gaps);
-
-	// prep result after fitting chunks into place
-	let g_chunk;
-
-	// rightmost chunk merges left
-	if(b_dangle) {
-		// merge dangle first
-		chunks$merge_left(a_chunks, a_fetched.pop(), i_scan);
-
-		// don't wedge this chunk
-		a_gaps.pop();
-	}
-
-	// insert wedges
-	g_chunk = chunks$wedges(a_chunks, a_fetched, a_gaps, i_chunk);
-
-	// final chunk
-	return chunk$within(g_chunk, i_ask_lo, i_ask_hi);
-}
-
-async function AsyncBuffer$fill_both(k_self, i_chunk, i_ask_lo, i_ask_hi) {
-	let a_chunks = k_self._a_chunks;
-
-	// deduce gaps on left side
-	let {
-		gaps: a_gaps_left,
-		dangle: b_dangle_left,
-		scan: i_fill_left,
-	} = chunks$gaps_left(a_chunks, i_chunk, i_ask_lo);
-
-	// deduce gaps on right side
-	let {
-		gaps: a_gaps_right,
-		dangle: b_dangle_right,
-		scan: i_fill_right,
-	} = chunks$gaps_right(a_chunks, i_chunk, i_ask_hi);
-
-	// fetch all gap ranges at once
-	let a_gaps = a_gaps_left.concat(a_gaps_right);
-	let a_fetched = await k_self._krc.fetch_ranges(a_gaps);
-
-	// prep result after fitting chunks into place
-	let g_chunk;
-
-	// rightmost chunk merges left
-	if(b_dangle_right) {
-		// merge dangle first
-		chunks$merge_left(a_chunks, a_fetched.pop(), i_fill_right);
-
-		// don't wedge this chunk
-		a_gaps_right.pop();
-	}
-
-	//
-	let nl_gaps_left = a_gaps_left.length;
-
-	// // iterate backwards to avoid mutating chunk index offset
-	// for(let i_fetch=nl_ranges_left+a_ranges_right.length-1, i_wedge=i_chunk-1; i_fetch>=nl_ranges_left; i_fetch--, i_wedge--) {
-	// 	// wedge chunk into place
-	// 	g_chunk = this.wedge(a_fetched[i_fetch], i_wedge);
-	// }
-
-	// leftmost chunk merges right
-	if(b_dangle_left) {
-		// merge dangle first
-		chunks$merge_right(a_chunks, a_fetched.shift(), i_fill_left);
-
-		// don't wedge this chunk
-		a_gaps_left.shift();
-	}
-
-	// // iterate backwards to avoid mutating chunk index offset
-	// for(let i_fetch=nl_ranges_left-1, i_wedge=i_chunk-1; i_fetch>=0; i_fetch--, i_wedge--) {
-	// 	// wedge chunk into place
-	// 	g_chunk = this.wedge(a_fetched[i_fetch], i_wedge);
-	// }
-
-	g_chunk = chunks$wedges(a_chunks, a_fetched, a_gaps, i_fill_left);
-
-	// final chunk
-	return chunk$within(g_chunk, i_ask_lo, i_ask_hi);
-}
-
-
 class AsyncBuffer {
 	constructor(krc) {
 		this._krc = krc;
@@ -404,10 +54,23 @@ class AsyncBuffer {
 		return this._cb_footprint;
 	}
 
-	fresh() {
+	clone() {
 		return new AsyncBuffer(this._krc);
 	}
 
+	async free() {
+		// acquire chunks lock
+		await this._kl_chunks.acquire();
+
+		// drop chunks
+		this._a_chunks.length = 0;
+
+		// update footprints
+		this._cb_footprint = this._cb_footprint_last_update = 0;
+
+		// release chunks lock
+		this._kl_chunks.release();
+	}
 
 	async validate() {
 		let a_chunks = this._a_chunks;
@@ -657,20 +320,23 @@ class AsyncBuffer {
 				ib_fetch = ib_chunk_hi;
 
 				// chunk range exceeds ask; break loop
-				if(ib_fetch >= ib_ask_hi) break;
+				if(ib_fetch >= ib_ask_hi) {
+					i_scan += 1;
+					break;
+				}
 			}
 
 			// ask touches or overlaps chunk
-			if(ib_ask_hi >= a_chunks[i_scan].lo) {
+			if(ib_ask_hi >= a_chunks[i_scan-1].lo) {
 				// merge right
 				b_merge_right = true;
 
 				// set merge hi
-				i_merge_hi = Math.min(i_scan+1, nl_chunks);
+				i_merge_hi = Math.min(i_scan, nl_chunks);
 			}
 			// set merge hi
 			else {
-				i_merge_hi = i_scan;
+				i_merge_hi = i_scan - 1;
 			}
 		}
 		// nothing to right; append range directly
@@ -796,176 +462,6 @@ class AsyncBuffer {
 		// return slice of chunk
 		return chunk$within(g_merge, ib_ask_lo, ib_ask_hi);
 	}
-
-	// takes a slice out of buffer from lo inclusive to hi exclusive
-	async slicea(i_ask_lo, i_ask_hi) {
-		let a_chunks = this._a_chunks;
-		let nl_chunks = a_chunks.length;
-
-		// byte length
-		let nl_buffer = this._krc.bytes;
-
-		// lo is out of range
-		if(i_ask_lo >= nl_buffer) throw new RangeError('`i_ask_lo` out of bounds');
-
-		// put hi in range
-		if(i_ask_hi > this._krc.bytes) i_ask_hi = nl_buffer;
-
-		// no chunks
-		if(!nl_chunks) {
-			// fetch new part
-			let at_add = await this.fetch(i_ask_lo, i_ask_hi);
-
-			// create chunk
-			let g_chunk = {
-				lo: i_ask_lo,
-				hi: i_ask_hi,
-				data: at_add,
-			};
-
-			// insert
-			a_chunks.push(g_chunk);
-
-			// straight-up
-			return g_chunk.data;
-		}
-
-		// binary search
-		let i_lo = 0;
-		let i_hi = nl_chunks;
-		while(i_lo < i_hi) {
-			let i_mid = (i_lo + i_hi) >>> 1;
-			let h_mid = a_chunks[i_mid];
-			let {
-				lo: i_chunk_lo,
-				hi: i_chunk_hi,
-			} = h_mid;
-
-			// starts at/before chunk starts
-			if(i_ask_lo <= i_chunk_lo) {
-				// ends after chunk starts (chunk is a hit)
-				if(i_ask_hi > i_chunk_lo) {
-					// ends at/before chunk ends
-					if(i_ask_hi <= i_chunk_hi) {
-						// chunk contains entire target
-						if(i_ask_lo === i_chunk_lo) {
-							return chunk$within(h_mid, i_ask_lo, i_ask_hi);
-						}
-						// chunk is missing target's head, left chunk does not contain target
-						else if(!i_lo || i_ask_lo >= a_chunks[i_mid-1].hi) {
-							// fetch difference
-							let at_add = await this.fetch(i_ask_lo, i_chunk_lo);
-							let g_chunk;
-
-							// left and right chunks exists and this will wedge between them
-							if(i_lo && i_ask_lo === a_chunks[i_mid-1].hi) {
-								g_chunk = chunks$wedge(a_chunks, at_add, i_mid-1);
-							}
-							// left chunk does not exist or there is gap; merge with right chunk
-							else {
-								g_chunk = chunks$merge_right(a_chunks, at_add, i_mid);
-							}
-
-							// view of chunk
-							return chunk$within(g_chunk, i_ask_lo, i_ask_hi);
-						}
-						// previous chunk contains part of target
-						else {
-							return AsyncBuffer$fill_left(this, i_mid, i_ask_lo, i_ask_hi);
-						}
-					}
-					// ends after chunk ends, chunk contains head
-					else if(i_ask_lo === i_chunk_lo) {
-						// no chunks to the right
-						if(i_mid === nl_chunks-1) {
-							// fetch difference
-							let at_add = await this.fetch(i_chunk_hi, i_ask_hi);
-
-							// merge with chunk
-							let g_chunk = chunks$merge_left(a_chunks, at_add, i_mid);
-
-							// view of chunk
-							return chunk$within(g_chunk, i_ask_lo, i_ask_hi);
-						}
-						// more chunks to the right
-						else {
-							return AsyncBuffer$fill_right(this, i_mid, i_ask_lo, i_ask_hi);
-						}
-					}
-					// missing parts at both head and tail
-					else {
-						return AsyncBuffer$fill_both(this, i_mid, i_ask_lo, i_ask_hi);
-					}
-				}
-				// ends before chunk starts; aim left
-				else {
-					i_hi = i_mid;
-				}
-			}
-			// starts after chunk starts, starts before chunk ends (hit)
-			else if(i_ask_lo < i_chunk_hi) {
-				// ends at/before chunk ends, chunk contains entire target
-				if(i_ask_hi <= i_chunk_hi) {
-					return chunk$within(h_mid, i_ask_lo, i_ask_hi);
-				}
-				// ends after chunk
-				else {
-					return AsyncBuffer$fill_right(this, i_mid, i_ask_lo, i_ask_hi);
-				}
-			}
-			// starts after chunk ends; aim right
-			else {
-				i_lo = i_mid + 1;
-			}
-		}
-
-		// insert new chunk
-		{
-			// ref within chunk
-			let g_within;
-
-			// need entire frag
-			let at_add = await this.fetch(i_ask_lo, i_ask_hi);
-
-			debugger;
-
-			let h_resolve = a_chunks[i_hi-1];
-			let b_connects_right = i_hi < a_chunks.length && i_ask_hi === a_chunks[i_hi].lo;
-
-			// connects to left
-			if(i_ask_lo === h_resolve.hi) {
-				// also connects to right; wedge
-				if(b_connects_right) {
-					g_within = chunks$wedge(a_chunks, at_add, i_hi-1);
-				}
-
-				// merge left
-				g_within = chunks$merge_left(a_chunks, at_add, i_hi-1);
-			}
-			// connects to right
-			else if(b_connects_right) {
-				g_within = chunks$merge_right(a_chunks, at_add, i_hi);
-			}
-			// insert chunk here
-			else {
-				// create chunk
-				let g_chunk = {
-					lo: i_ask_lo,
-					hi: i_ask_hi,
-					data: at_add,
-				};
-
-				// insert chunk
-				a_chunks.splice(i_hi, 0, g_chunk);
-
-				// return
-				return g_chunk;
-			}
-
-			// within
-			return chunk$within(g_within, i_ask_lo, i_ask_hi);
-		}
-	}
 }
 
 class AsyncView {
@@ -979,8 +475,12 @@ class AsyncView {
 		return this._nb_view;
 	}
 
-	fresh() {
-		return new AsyncView(this._kab.fresh(), this._ib_start, this._nb_view);
+	get buffer() {
+		return this._kab;
+	}
+
+	clone() {
+		return new AsyncView(this._kab.clone(), this._ib_start, this._nb_view);
 	}
 
 	cached(ib_rel) {
@@ -1047,6 +547,21 @@ class AsyncViewRegion {
 		return this._nb_view;
 	}
 
+	report() {
+		let h_buffers = this._h_buffers;
+		let s_report = '';
+		for(let s_name in h_buffers) {
+			let kb_which = h_buffers[s_name];
+			s_report += `[[${s_name}]]: {
+	chunks: ${kb_which._a_chunks.length},
+	footprint: ${(kb_which.footprint / 1024 / 1024).toFixed(3)} MiB,
+}
+`;
+		}
+
+		return s_report;
+	}
+
 	skip(nb_skip) {
 		this._ib_start += nb_skip;
 		this._nb_view -= nb_skip;
@@ -1080,6 +595,10 @@ class AsyncViewRegion {
 
 		return new AsyncView(kab_select, kav_ref._ib_start, kav_ref._nb_view);
 	}
+
+	free(s_region) {
+		return this._h_buffers[s_region].free();
+	}
 }
 
 const H_TYPED_ARRAY_NAMES_TO_GET_METHOD = {
@@ -1096,6 +615,51 @@ const H_TYPED_ARRAY_NAMES_TO_GET_METHOD = {
 	Float64Array: 'getFloat64',
 };
 
+const NB_DEFAULT_CURSOR_CHUNK = 512;
+
+async function AsyncTypedArrayCursor$refresh(k_self) {
+	if(k_self._at_cache.length) {
+		return k_self._at_cache;
+	}
+
+	let kav = k_self._kav;
+
+	let ns_element = kav._shifts_per_element;
+
+	let nt_fetch = Math.max(1, NB_DEFAULT_CURSOR_CHUNK >> ns_element);
+
+	let it_curr = this._it_curr;
+	let it_next = Math.min(it_curr + nt_fetch, this._it_hi);
+	let at_slice = await kav.slice(it_curr, it_next);
+	this._it_curr = it_next;
+
+	return at_slice;
+}
+
+class AsyncTypedArrayCursor {
+	constructor(kav, it_lo, it_hi, nb_chunk) {
+		this._kav = kav;
+		this._it_lo = it_lo;
+		this._it_hi = it_hi;
+		this._it_curr = it_lo;
+		this._nb_chunk = nb_chunk || NB_DEFAULT_CURSOR_CHUNK;
+	}
+
+	get remaining() {
+		return this._it_hi - this._it_curr;
+	}
+
+	async next() {
+		let at_cache = await AsyncTypedArrayCursor$refresh(this);
+
+		let x_value = this._at_cache[0];
+
+		this._at_cache = at_cache.subarray(1);
+
+		return x_value;
+	}
+}
+
 class AsyncTypedArray {
 	constructor(kav_items, dc_typed_array, nl_items=Infinity) {
 		this._kav_items = kav_items;
@@ -1111,6 +675,11 @@ class AsyncTypedArray {
 	async at(i_at) {
 		// ref shift-per-element
 		let ns_element = this._shifts_per_element;
+
+		// range exception
+		if(i_at >= this._nl_items) {
+			throw new RangeError(`cannot fetch item at out-of-bounds position ${i_at}`);
+		}
 
 		// byte index of item start
 		let ib_lo = i_at << ns_element;
@@ -1181,6 +750,10 @@ class AsyncTypedArray {
 
 		// mem-aligned
 		return new this._dc_typed_array(at_slice.buffer, ib_offset, at_slice.byteLength >>> ns_element);
+	}
+
+	cursor(i_lo=0, i_hi=this._nl_items-i_lo, nb_chunk=0) {
+		return new AsyncTypedArrayCursor(this, i_lo, i_hi, nb_chunk);
 	}
 
 	next() {
