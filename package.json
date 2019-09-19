@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "bkit": "^1.4.1",
+    "content-type": "^1.0.4",
     "isomorphic-fetch": "^2.2.1"
   }
 }
