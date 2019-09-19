@@ -1,24 +1,56 @@
-const frag = require('../../lib/main/module.js');
-const worker = require('worker');
+const frag = require('../../src/main/module.js');
 
-worker.dedicated({
+function map_tree(h_tree, {node:f_node, leaf:f_leaf}) {
+	for(let s_key in h_tree) {
+		let z_value = h_tree[s_key];
 
-	async load_hdt(a_sources) {
-		let kf_hdt = frag(a_sources);
+		if('function' === typeof z_value) {
+			f_leaf(s_key, z_value);
+		}
+		else {
+			f_node(s_key, z_value);
+		}
+	}
+}
 
-		let nb_hdt = await kf_hdt.size();
-		this.emit('size', nb_hdt);
+function describes(s_root, h_tree) {
+	map_tree(h_tree, {
+		node(s_node, f_leafs) {
+			describe(s_node, () => {
+				f_leafs();
+			});
+		},
 
-		let kav_header = kf_hdt.view();
-		kav_header.slice(0, 10);
+		leaf(s_leaf, f_leaf) {
+			it(s_leaf, f_leaf);
+		},
+	});
+}
+
+describes('frag', {
+	from: {},
+
+	Initable: {},
+
+	AsyncLock: {},
+
+	AsyncBuffer: {},
+
+	AsyncView: {},
+
+	AsyncTypedArray: {},
+	AsyncTypedArrayCursor: {},
+
+	AsyncViewSelector: {},
+
+	ResourceConnection: {
+		HttpRange: {},
+
+		AutoSwitching: {},
+
+		Websocket: {},
+
+		FileHandle: {},
 	},
-
-	async load_bat(a_sources) {
-		let kf_bat = frag(a_sources);
-
-		let nb_bat = await kf_bat.size();
-
-		
-	},
-
 });
+

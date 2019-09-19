@@ -246,42 +246,21 @@ module.exports = class AsyncDecoder extends AsyncView {
 	}
 
 	/**
-	 * Create a new AsyncTypedArray by decoding the type and length from the view.
-	 * @return {AsyncTypedArray} the asynchronous typed array
+	 * Decode a variable-width unsigned int.
+	 * @return {int} the decoded int value
 	 */
-	async typedArray() {
+	async vuint() {
 		// acquire cache lock
 		await this._kl_cache.acquire();
 
-		// typed array type
-		let x_type = await AsyncDecoder$byte(this);
-
-		// nubmer of elements in array
-		let nl_items = await AsyncDecoder$vuint(this);
-
-		// typed array class
-		let dc_typed_array = bkit.constants.H_ENCODING_TO_TYPED_ARRAY[x_type];
-
-		// size of array in bytes
-		let nb_array = dc_typed_array.BYTES_PER_ELEMENT * nl_items;
-
-		// create async typed array
-		let kat_array = new AsyncTypedArray(this.view(0, nb_array), dc_typed_array, nl_items);
-
-		// went beyond cache; reset and update read position
-		if(nb_array >= this._at_cache.length) {
-			this._ib_read = this.read + nb_array;
-			this._at_cache = AT_EMPTY;
-		}
-		// preserve cache
-		else {
-			this._at_cache = this._at_cache.slice(nb_array);
-		}
+		// read vuint
+		let x_value = await AsyncDecoder$vuint(this);
 
 		// relase cache lock
 		this._kl_cache.release();
 
-		return kat_array;
+		// return value
+		return x_value;
 	}
 
 	/**
@@ -346,20 +325,41 @@ module.exports = class AsyncDecoder extends AsyncView {
 	}
 
 	/**
-	 * Decode a variable-width unsigned int.
-	 * @return {int} the decoded int value
+	 * Create a new AsyncTypedArray by decoding the type and length from the view.
+	 * @return {AsyncTypedArray} the asynchronous typed array
 	 */
-	async vuint() {
+	async typedArray() {
 		// acquire cache lock
 		await this._kl_cache.acquire();
 
-		// read vuint
-		let x_value = await AsyncDecoder$vuint(this);
+		// typed array type
+		let x_type = await AsyncDecoder$byte(this);
+
+		// nubmer of elements in array
+		let nl_items = await AsyncDecoder$vuint(this);
+
+		// typed array class
+		let dc_typed_array = bkit.constants.H_ENCODING_TO_TYPED_ARRAY[x_type];
+
+		// size of array in bytes
+		let nb_array = dc_typed_array.BYTES_PER_ELEMENT * nl_items;
+
+		// create async typed array
+		let kat_array = new AsyncTypedArray(this.view(0, nb_array), dc_typed_array, nl_items);
+
+		// went beyond cache; reset and update read position
+		if(nb_array >= this._at_cache.length) {
+			this._ib_read = this.read + nb_array;
+			this._at_cache = AT_EMPTY;
+		}
+		// preserve cache
+		else {
+			this._at_cache = this._at_cache.slice(nb_array);
+		}
 
 		// relase cache lock
 		this._kl_cache.release();
 
-		// return value
-		return x_value;
+		return kat_array;
 	}
 };
