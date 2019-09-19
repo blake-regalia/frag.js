@@ -1,5 +1,5 @@
-const File = require('./file.js');
+const FileHandle = require('./file-handle.js');
 
 module.exports = {
-	File,
+	FileHandle,
 };

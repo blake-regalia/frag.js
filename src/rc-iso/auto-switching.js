@@ -1,6 +1,6 @@
-const composite_resource_connection = require('./composite.js');
+const ResourceConnection_Composite = require('./composite.js');
 
-module.exports = class auto_switching_composite_resource_connection extends composite_resource_connection {
+module.exports = class ResourceConnection_AutoSwitching extends ResourceConnection_Composite {
 	constructor(a_krcs=[]) {
 		super();
 
@@ -58,7 +58,7 @@ module.exports = class auto_switching_composite_resource_connection extends comp
 		]);
 	}
 
-	async fetch(i_lo, i_hi) {
+	fetch(i_lo, i_hi) {
 		return this.krc.fetch(i_lo, i_hi);
 	}
 
