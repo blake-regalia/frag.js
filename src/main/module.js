@@ -7,7 +7,7 @@ const rc = require('../rc-iso/locals.js');
 const AsyncBuffer = require('../class/async-buffer.js');
 
 class Abstraction {
-	constructor(a_sources, h_options={}) {
+	constructor(a_sources, gc_abstraction={}) {
 		let a_krcs = a_sources.map((z_source) => {
 			// path
 			if('string' === typeof z_source) {
@@ -17,20 +17,20 @@ class Abstraction {
 				if('/' === p_source[0] || p_source.startsWith('./') || p_source.startsWith('../')) {
 					// in browser
 					if(B_BROWSER) {
-						return new rc.http_range(p_source);
+						return rc.HttpRange.new(p_source);
 					}
 					// in node.js
 					else {
-						return new rc.file(p_source);
+						return rc.FileHandle.fromPath(p_source);
 					}
 				}
 				// http(s)
 				else if(p_source.startsWith('http://') || p_source.startsWith('https://') || p_source.startsWith('file://')) {
-					return new rc.http_range(p_source);
+					return rc.HttpRange.new(p_source);
 				}
 				// websocket
 				else if(p_source.startsWith('ws://')) {
-					return new rc.websocket(p_source);
+					return rc.Websocket.new(p_source);
 				}
 				// torrent
 				else if(p_source.startsWith('magnet:?') || p_source.endsWith('.torrent')) {
@@ -44,12 +44,12 @@ class Abstraction {
 			// object
 			else if('object' === typeof z_source) {
 				// http(s)
-				if(z_source instanceof rc.http_range) {
-					return rc.http_range(z_source);
+				if(z_source instanceof rc.HttpRange) {
+					return rc.HttpRange.from(z_source);
 				}
 				// websocket
-				else if(z_source instanceof rc.websocket) {
-					return rc.websocket(z_source);
+				else if(z_source instanceof rc.Websocket) {
+					return rc.Websocket.from(z_source);
 				}
 				// // torrent
 				// else if(z_source instanceof )
@@ -57,10 +57,10 @@ class Abstraction {
 				// if(Object === p_source.constructor)
 			}
 
-			return null;
+			return Promise.resolve(null);
 		});
 
-		let krc = new rc.auto_switching(a_krcs);
+		let krc = new rc.AutoSwitching(a_krcs);
 		let kab = new AsyncBuffer(krc);
 
 		Object.assign(this, {
@@ -81,7 +81,11 @@ class Abstraction {
 
 
 /* eslint-disable global-require */
-module.exports = Object.assign((a_sources, h_options) => new Abstraction(a_sources, h_options), {
+module.exports = {
+	from(...a_args) {
+		return new Abstraction(...a_args);
+	},
+
 	AsyncBuffer: require('../class/async-buffer.js'),
 	AsyncView: require('../class/async-view.js'),
 	AsyncDecoder: require('../class/async-decoder.js'),
@@ -93,4 +97,4 @@ module.exports = Object.assign((a_sources, h_options) => new Abstraction(a_sourc
 
 	rc,
 	resourceConnections: rc,
-});
+};
