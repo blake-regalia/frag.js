@@ -7,7 +7,7 @@ module.exports = class ResourceConnection_FileHandle extends ResourceConnection 
 		let df_src = await fsp.open(p_src, 'r');
 
 		// create instance
-		return new this(df_src);
+		return await this.new(df_src);
 	}
 
 	constructor(df_src) {

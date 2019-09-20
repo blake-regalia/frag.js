@@ -1,7 +1,6 @@
 const bkit = require('bkit');
 
 const AsyncLock = require('../class/async-lock.js');
-const AsyncView = require('../class/async-view.js');
 const AsyncTypedArray = require('../class/async-typed-array.js');
 
 // an empty buffer
@@ -37,19 +36,20 @@ async function AsyncDecoder$refresh(k_self, nb_need=1) {
 
 	// cache lower than need
 	if(nb_need > k_self._at_cache.length) {
+		let kav = k_self._kav;
 		let nb_chunk = k_self._nb_chunk;
 
 		// lock before going async
 		k_self._at_cache = null;
 
 		// fetch size
-		let nb_fetch = Math.min(k_self.cached(ib_read) || nb_chunk, nb_chunk);
+		let nb_fetch = Math.min(kav.cached(ib_read) || nb_chunk, nb_chunk);
 
 		// advance read pointer
 		let ib_advance = ib_read + Math.max(nb_fetch, nb_need);
 
 		// reload cache
-		let at_cache = k_self._at_cache = await k_self.slice(ib_read, ib_advance);  // eslint-disable-line require-atomic-updates
+		let at_cache = k_self._at_cache = await kav.slice(ib_read, ib_advance);  // eslint-disable-line require-atomic-updates
 
 		// update pointer
 		k_self._ib_read = ib_read + at_cache.length;  // eslint-disable-line require-atomic-updates
@@ -191,15 +191,13 @@ async function AsyncDecoder$vuint(k_self) {
 /**
  * Asynchronously decode reserved datatypes from an AsyncView
  */
-module.exports = class AsyncDecoder extends AsyncView {
+module.exports = class AsyncDecoder {
 	/**
-	 * @param  {AsyncBuffer} kab - to create the view from
-	 * @param  {BytePosition} ib_start - inclusive lower range of view
-	 * @param  {ByteLength} nb_view - size of view in bytes
+	 * @param  {AsyncView} kav - view to create the decoder from
 	 * @param  {ByteLength} nb_chunk - size of chunk buffer in bytes
 	 */
-	constructor(kab, ib_start=0, nb_view=Infinity, nb_chunk=NB_DEFAULT_BUFFER_CHUNK) {
-		super(kab, ib_start, nb_view);
+	constructor(kav, nb_chunk=NB_DEFAULT_BUFFER_CHUNK) {
+		this._kav = kav;
 		this._ib_read = 0;
 		this._nb_chunk = nb_chunk || NB_DEFAULT_BUFFER_CHUNK;
 		this._at_cache = AT_EMPTY;
@@ -218,12 +216,12 @@ module.exports = class AsyncDecoder extends AsyncView {
 	/**
 	 * Create a new AsyncView on the remaining portion of data that has yet
 	 * to be read. Accepts optional offset and length.
-	 * @param  {BytePosition} ib_biew - relative offset to start view
+	 * @param  {BytePosition} ib_view - relative offset to start view
 	 * @param  {ByteLength} nb_view - how many bytes to limit the view to
 	 * @return {AsyncView} the new view
 	 */
-	view(ib_biew=0, nb_view=-1) {
-		return this.view(this.read+ib_biew, nb_view);
+	view(ib_view=0, nb_view=this._kav.bytes-this.read-ib_view) {
+		return this._kav.view(this.read+ib_view, nb_view);
 	}
 
 	/**
@@ -232,13 +230,13 @@ module.exports = class AsyncDecoder extends AsyncView {
 	 */
 	async byte() {
 		// acquire cache lock
-		await this._kl_cache.acquire();
+		let f_release = await this._kl_cache.acquire();
 
 		// read byte
 		let xb_value = await AsyncDecoder$byte(this);
 
 		// release cache lock
-		this._kl_cache.release();
+		f_release();
 
 		// return value
 		return xb_value;
@@ -250,13 +248,13 @@ module.exports = class AsyncDecoder extends AsyncView {
 	 */
 	async vuint() {
 		// acquire cache lock
-		await this._kl_cache.acquire();
+		let f_release = await this._kl_cache.acquire();
 
 		// read vuint
 		let x_value = await AsyncDecoder$vuint(this);
 
 		// relase cache lock
-		this._kl_cache.release();
+		f_release();
 
 		// return value
 		return x_value;
@@ -268,7 +266,7 @@ module.exports = class AsyncDecoder extends AsyncView {
 	 */
 	async ntu8String() {
 		// acquire cache lock
-		await this._kl_cache.acquire();
+		let f_release = await this._kl_cache.acquire();
 
 		// renew cache
 		let at_cache = AT_EMPTY;
@@ -290,7 +288,7 @@ module.exports = class AsyncDecoder extends AsyncView {
 		this._at_cache = at_cache.slice(ib_nt+1);
 
 		// relase cache lock
-		this._kl_cache.release();
+		f_release();
 
 		// decode string
 		return bkit.decodeUtf8(at_string);
@@ -302,7 +300,7 @@ module.exports = class AsyncDecoder extends AsyncView {
 	 */
 	async lpu8String() {
 		// acquire cache lock
-		await this._kl_cache.acquire();
+		let f_release = await this._kl_cache.acquire();
 
 		// string length
 		let nb_string = await AsyncDecoder$vuint(this);
@@ -317,7 +315,7 @@ module.exports = class AsyncDecoder extends AsyncView {
 		this._at_cache = at_cache.slice(nb_string);
 
 		// relase cache lock
-		this._kl_cache.release();
+		f_release();
 
 		// decode string
 		return bkit.decodeUtf8(at_cache.slice(0, nb_string));
@@ -329,7 +327,7 @@ module.exports = class AsyncDecoder extends AsyncView {
 	 */
 	async typedArray() {
 		// acquire cache lock
-		await this._kl_cache.acquire();
+		let f_release = await this._kl_cache.acquire();
 
 		// typed array type
 		let x_type = await AsyncDecoder$byte(this);
@@ -357,7 +355,7 @@ module.exports = class AsyncDecoder extends AsyncView {
 		}
 
 		// relase cache lock
-		this._kl_cache.release();
+		f_release();
 
 		return kat_array;
 	}

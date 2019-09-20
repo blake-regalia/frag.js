@@ -5,6 +5,11 @@ const AsyncView = require('../class/async-view.js');
  * for categorical memory management.
  */
 module.exports = class AsyncViewSelector {
+	/**
+	 * @param  {Hash<AsyncBuffer>} h_buffers - hash of buffers to use
+	 * @param  {BytePosition} ib_start - absolute byte position to start view
+	 * @param  {ByteLength} nb_view - length of view in bytes
+	 */
 	constructor(h_buffers, ib_start=0, nb_view=Infinity) {
 		this._h_buffers = h_buffers;
 		this._ib_start = ib_start;
@@ -14,9 +19,14 @@ module.exports = class AsyncViewSelector {
 			nb_view = h_buffers[Object.keys(h_buffers)[0]].bytes;
 		}
 
+		// set view length
 		this._nb_view = nb_view;
 	}
 
+	/**
+	 * Get the size of the view range in bytes
+	 * @return {ByteLength} size of view range
+	 */
 	get bytes() {
 		return this._nb_view;
 	}
@@ -36,24 +46,33 @@ module.exports = class AsyncViewSelector {
 		return s_report;
 	}
 
+	/**
+	 * Skip read position forward a certain number of bytes
+	 * @param  {ByteLength} nb_skip - length of skip
+	 * @return {this} instance
+	 */
 	skip(nb_skip) {
 		this._ib_start += nb_skip;
 		this._nb_view -= nb_skip;
-		if(this._nb_view < 0) {
-			debugger;
-		}
+		// if(this._nb_view < 0) {
+		// 	debugger;
+		// }
 		return this;
 	}
 
+	/**
+	 * Create a new AsyncViewSelector by narrowing the current view
+	 * @param  {BytePosition} ib_rel - start position relative to the current view
+	 * @param  {ByteLength} nb_view - size of new view
+	 * @return {AsyncViewSelector} the narrowed view selector
+	 */
 	view(ib_rel=0, nb_view=Infinity) {
-		// infinite view length is till end (cannot expand)
+		// infinite view length; adjust to end (cannot expand)
 		if(!Number.isFinite(nb_view)) {
-			debugger;
 			nb_view = this._nb_view - ib_rel;
 		}
 		// negative view length is relative to end length
 		else if(nb_view < 0) {
-			debugger;
 			nb_view = this._nb_view - ib_rel + nb_view;
 		}
 
@@ -61,16 +80,29 @@ module.exports = class AsyncViewSelector {
 		return new AsyncViewSelector(this._h_buffers, this._ib_start+ib_rel, nb_view);
 	}
 
-	select(s_region, kav_ref=null) {
-		let kab_select = this._h_buffers[s_region];
-		if(!kab_select) throw new Error(`AsyncViewSelector does not have a region labeled '${s_region}'`);
+	/**
+	 * Create an AsyncView by selecting a buffer by its key identifier
+	 * @param  {Key} si_region - key that identifiers which buffer to select
+	 * @param  {AsyncView} [kav_ref]  - optional view reference to create new view range from
+	 * @return {AsyncView} the new view
+	 */
+	select(si_region, kav_ref=null) {
+		let kab_select = this._h_buffers[si_region];
+		if(!kab_select) throw new Error(`AsyncViewSelector does not have a region labeled '${si_region}'`);
 
+		// no reference, use this
 		if(!kav_ref) kav_ref = this;
 
+		// new view
 		return new AsyncView(kab_select, kav_ref._ib_start, kav_ref._nb_view);
 	}
 
-	free(s_region) {
-		return this._h_buffers[s_region].free();
+	/**
+	 * Clear the cache of the given buffer
+	 * @param  {string} si_buffer - the key that identifies which buffer to clear
+	 * @return {[type]}          [description]
+	 */
+	clear(si_buffer) {
+		return this._h_buffers[si_buffer].clear();
 	}
 };

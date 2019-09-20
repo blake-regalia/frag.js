@@ -1,4 +1,5 @@
 const AsyncBuffer = require('../class/async-buffer.js');
+const AsyncDecoder = require('../class/async-decoder.js');
 
 /**
  * A class for accessing specific ranges of a resource, allowing the same AsyncBuffer instance
@@ -12,8 +13,8 @@ module.exports = class AsyncView {
 	 * @param  {AsyncView} kav_from - the existing AsyncView
 	 * @return {AsyncView} the new instance
 	 */
-	static fromAsyncView(kav_from) {
-		return new this(AsyncBuffer.fromAsyncBuffer(kav_from._kab), kav_from._ib_start, kav_from._nb_view);
+	static fromAsyncView(kav_from, ...a_args) {
+		return new this(AsyncBuffer.fromAsyncBuffer(kav_from._kab), kav_from._ib_start, kav_from._nb_view, ...a_args);
 	}
 
 	/**
@@ -33,6 +34,15 @@ module.exports = class AsyncView {
 
 	get buffer() {
 		return this._kab;
+	}
+
+	/**
+	 * Create a new AsyncDecoder from this view
+	 * @param  {...spreadArgs} a_args - additional arguments to AsyncDecoder constructor
+	 * @return {AsyncDecoder} the new decoder
+	 */
+	decoder(...a_args) {
+		return new AsyncDecoder(this, ...a_args);
 	}
 
 	/**
@@ -101,14 +111,17 @@ module.exports = class AsyncView {
 		return await this._kab.slices(a_ranges.map(a => [ib_start+a[0], ib_start+a[1]]));
 	}
 
-
-	next() {
+	/**
+	 * Create a new AsyncView that starts at the current read position of this instance
+	 * @return {AsyncView} the narrowed view
+	 */
+	remainder() {
 		return new AsyncView(this._kab, this._ib_start+this._nb_view);
 	}
 
-	// fetch given ranges and then discard bytes
-	async fetch_ranges(a_ranges) {
-		let ib_start = this._ib_start;
-		return await this._kab.resource.fetch_ranges(a_ranges.map(a => [ib_start+a[0], ib_start+a[1]]));
-	}
+	// // fetch given ranges and then discard bytes
+	// async fetch(a_ranges) {
+	// 	let ib_start = this._ib_start;
+	// 	return await this._kab._krc.fetch_ranges(a_ranges.map(a => [ib_start+a[0], ib_start+a[1]]));
+	// }
 };

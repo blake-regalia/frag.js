@@ -53,7 +53,7 @@ module.exports = class AsyncBuffer {
 	 */
 	async clear() {
 		// acquire chunks lock
-		await this._kl_chunks.acquire();
+		let f_release = await this._kl_chunks.acquire();
 
 		// cleared report
 		let g_report = {
@@ -68,7 +68,7 @@ module.exports = class AsyncBuffer {
 		this._cb_footprint = 0;
 
 		// release chunks lock
-		this._kl_chunks.release();
+		f_release();
 
 		// cleared report
 		return g_report;
@@ -131,7 +131,7 @@ module.exports = class AsyncBuffer {
 	 */
 	async slice(ib_ask_lo, ib_ask_hi) {
 		// acquire chunks lock
-		await this._kl_chunks.acquire();
+		let f_release = await this._kl_chunks.acquire();
 
 		let a_chunks = this._a_chunks;
 		let nl_chunks = a_chunks.length;
@@ -167,7 +167,7 @@ module.exports = class AsyncBuffer {
 			this._cb_footprint += at_add.length;
 
 			// release chunks lock
-			this._kl_chunks.release();
+			f_release();
 
 			// straight-up
 			return g_chunk.data;
@@ -205,7 +205,7 @@ module.exports = class AsyncBuffer {
 			// target completely within this chunk
 			else if(ib_ask_hi <= ib_chunk_hi) {
 				// release chunks lock
-				this._kl_chunks.release();
+				f_release();
 
 				// return shallow slice of chunk
 				return g_mid.data.subarray(ib_ask_lo-ib_chunk_lo, ib_ask_hi-ib_chunk_lo);
@@ -294,7 +294,7 @@ module.exports = class AsyncBuffer {
 		}
 
 		// fetch all gap ranges at once
-		let a_fetched = await this._krc.fetch_ranges(a_gaps);
+		let a_fetched = await this._krc.batch(a_gaps);
 
 		// byte size of new merged chunk
 		let cb_merge = ib_ask_hi - ib_ask_lo;
@@ -386,19 +386,19 @@ module.exports = class AsyncBuffer {
 			data: at_merge,
 		};
 
-		// // invalid
-		// let at_check = await this.fetch(ib_merge_lo, ib_merge_hi);
-		// for(let ib_check=0; ib_check<at_check.length; ib_check++) {
-		// 	if(at_check[ib_check] !== at_merge[ib_check]) {
-		// 		debugger;
-		// 	}
-		// }
+		// invalid
+		let at_check = await this._krc.fetch(ib_merge_lo, ib_merge_hi);
+		for(let ib_check=0; ib_check<at_check.length; ib_check++) {
+			if(at_check[ib_check] !== at_merge[ib_check]) {
+				debugger;
+			}
+		}
 
 		// merge chunks
 		a_chunks.splice(i_merge_lo, i_merge_hi-i_merge_lo, g_merge);
 
 		// release chunks lock
-		this._kl_chunks.release();
+		f_release();
 
 		// exceeded threshold
 		if(cb_footprint >= this._nb_threshold) {
@@ -421,7 +421,7 @@ module.exports = class AsyncBuffer {
 	//  */
 	// async slices(a_ranges) {
 	// 	// acquire chunks lock
-	// 	await this._kl_chunks.acquire();
+	// 	let f_release = await this._kl_chunks.acquire();
 
 	// 	// start to perform all slicing (in reverse)
 	// 	let adp_slices = a_ranges.reverse().map((a_range) => {
@@ -430,7 +430,7 @@ module.exports = class AsyncBuffer {
 
 	// 	// fetch all ranges
 	// 	let a_retrievals = this._a_retrievals;
-	// 	this._krc.fetch_ranges(this._a_fetches).forEach((at_fetch, i_fetch) => {
+	// 	this._krc.batch(this._a_fetches).forEach((at_fetch, i_fetch) => {
 	// 		// resolve promise
 	// 		a_retrievals[i_fetch](at_fetch);
 	// 	});
@@ -439,7 +439,7 @@ module.exports = class AsyncBuffer {
 	// 	let a_results = await Promise.all(adp_slices);
 
 	// 	// release chunks lock
-	// 	this._kl_chunks.release();
+	// 	f_release();
 
 	// 	// out
 	// 	return a_results.reverse();
