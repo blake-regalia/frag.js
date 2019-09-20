@@ -1,5 +1,7 @@
 const bkit = require('bkit');
 
+const AT_EMPTY = new Uint8Array();
+
 const NB_DEFAULT_CURSOR_CHUNK = 1 << 11;  // 2 KiB
 
 async function AsyncTypedArrayCursor$refresh(k_self) {
@@ -70,7 +72,7 @@ class AsyncTypedArrayCursor {
 /**
  * Asynchronous virtual TypedArray
  */
-module.exports = class AsyncTypedArray {
+class AsyncTypedArray {
 	constructor(kav_items, dc_typed_array, nl_items=Infinity) {
 		this._kav_items = kav_items;
 		this._dc_typed_array = dc_typed_array;
@@ -212,3 +214,5 @@ module.exports = class AsyncTypedArray {
 }
 
 AsyncTypedArray.Cursor = AsyncTypedArrayCursor;
+
+module.exports = AsyncTypedArray;

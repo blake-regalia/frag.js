@@ -37,20 +37,19 @@ async function AsyncDecoder$refresh(k_self, nb_need=1) {
 
 	// cache lower than need
 	if(nb_need > k_self._at_cache.length) {
-		let kav = k_self._kav;
 		let nb_chunk = k_self._nb_chunk;
 
 		// lock before going async
 		k_self._at_cache = null;
 
 		// fetch size
-		let nb_fetch = Math.min(kav.cached(ib_read) || nb_chunk, nb_chunk);
+		let nb_fetch = Math.min(k_self.cached(ib_read) || nb_chunk, nb_chunk);
 
 		// advance read pointer
 		let ib_advance = ib_read + Math.max(nb_fetch, nb_need);
 
 		// reload cache
-		let at_cache = k_self._at_cache = await kav.slice(ib_read, ib_advance);  // eslint-disable-line require-atomic-updates
+		let at_cache = k_self._at_cache = await k_self.slice(ib_read, ib_advance);  // eslint-disable-line require-atomic-updates
 
 		// update pointer
 		k_self._ib_read = ib_read + at_cache.length;  // eslint-disable-line require-atomic-updates
@@ -224,7 +223,7 @@ module.exports = class AsyncDecoder extends AsyncView {
 	 * @return {AsyncView} the new view
 	 */
 	view(ib_biew=0, nb_view=-1) {
-		return this._kav.view(this.read+ib_biew, nb_view);
+		return this.view(this.read+ib_biew, nb_view);
 	}
 
 	/**

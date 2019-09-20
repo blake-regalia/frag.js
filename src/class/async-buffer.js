@@ -20,7 +20,7 @@ module.exports = class AsyncBuffer {
 	 * @param  {ResourceConnection} krc - a connection object to some resource
 	 * @param {BufferConfig} gc_buffer - monitor memory footprint via 'threshold' and 'notify' keys
 	 */
-	constructor(krc, gc_buffer) {
+	constructor(krc, gc_buffer={}) {
 		this._krc = krc;
 		this._a_chunks = [];
 		this._kl_chunks = new AsyncLock();
