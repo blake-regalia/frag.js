@@ -8,7 +8,7 @@ async function AsyncTypedArrayCursor$refresh(k_self) {
 	let kav = k_self._kav;
 
 	// ref shifts per element
-	let ns_element = kav._shifts_per_element;
+	let ns_element = kav._ns_element;
 
 	// how many elements to fetch
 	let nt_fetch = Math.max(1, k_self._nb_chunk>>ns_element);
@@ -77,11 +77,16 @@ class AsyncTypedArray {
 		this._kav_items = kav_items;
 		this._dc_typed_array = dc_typed_array;
 		this._nl_items = nl_items;
-		this._shifts_per_element = Math.log2(dc_typed_array.BYTES_PER_ELEMENT);
+		let ns_element = this._ns_element = Math.log2(dc_typed_array.BYTES_PER_ELEMENT);
+		this._f_reader_uint = bkit.readerUintLE(1 << ns_element);
 	}
 
 	get size() {
 		return this._nl_items;
+	}
+
+	get BYTES_PER_ELEMENT() {
+		return 1 << this._ns_element;
 	}
 
 	/**
@@ -91,21 +96,24 @@ class AsyncTypedArray {
 	 */
 	async at(it_at) {
 		// ref shift-per-element
-		let ns_element = this._shifts_per_element;
+		let ns_element = this._ns_element;
 
 		// range exception
 		if(it_at >= this._nl_items) {
 			throw new RangeError(`cannot fetch item at out-of-bounds position ${it_at}`);
 		}
 
+		// number of bytes per element
+		let nb_element = 1 << ns_element;
+
 		// byte index of item start
-		let ib_lo = it_at << ns_element;
+		let ib_lo = it_at * nb_element;
 
 		// fetch slice
-		let at_slice = await this._kav_items.slice(ib_lo, (ib_lo+1) << ns_element);
+		let at_slice = await this._kav_items.slice(ib_lo, ib_lo+nb_element);
 
 		// read uint
-		return bkit.readUintLE(at_slice, 0, 1 << ns_element);
+		return this._f_reader_uint(at_slice, 0);
 
 		// {
 		// 	// create data view of slice
@@ -132,7 +140,7 @@ class AsyncTypedArray {
 	 */
 	async pair(it_lo) {
 		// ref shift-per-element
-		let ns_element = this._shifts_per_element;
+		let ns_element = this._ns_element;
 
 		// fetch slice
 		let at_slice = await this._kav_items.slice(it_lo<<ns_element, (it_lo+2)<<ns_element);
@@ -141,9 +149,10 @@ class AsyncTypedArray {
 		let nb_element = 1 << ns_element;
 
 		// read uints
+		let f_reader_uint = this._f_reader_uint;
 		return new this._dc_typed_array([
-			bkit.readUintLE(at_slice, 0, nb_element),
-			bkit.readUintLE(at_slice, nb_element, nb_element),
+			f_reader_uint(at_slice, 0),
+			f_reader_uint(at_slice, nb_element),
 		]);
 
 		// // create data view of slice
@@ -166,7 +175,7 @@ class AsyncTypedArray {
 	 * @return {TypedArray} the sliced data
 	 */
 	async slice(it_lo=0, it_hi=this._nl_items-it_lo) {
-		let ns_element = this._shifts_per_element;
+		let ns_element = this._ns_element;
 		let at_slice = await this._kav_items.slice(it_lo<<ns_element, it_hi<<ns_element);
 
 		// ref typed array constructor
@@ -207,7 +216,7 @@ class AsyncTypedArray {
 
 	next() {
 		if(!Number.isFinite(this._nl_items)) throw new Error('cannot call next() method on AsyncTypedArray since size was not set');
-		let ib_start = this._nl_items << this._shifts_per_element;
+		let ib_start = this._nl_items << this._ns_element;
 		let nb_view = this._kav_items.bytes;
 		return this._kav_items.view(ib_start, nb_view - ib_start);
 	}

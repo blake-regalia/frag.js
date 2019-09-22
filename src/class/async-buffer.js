@@ -23,8 +23,10 @@ module.exports = class AsyncBuffer {
 	constructor(krc, gc_buffer={}) {
 		this._krc = krc;
 		this._a_chunks = [];
-		this._kl_chunks = new AsyncLock();
 		this._cb_footprint = 0;
+		this._a_hardened = [];
+		this._cb_hardened = 0;
+		this._kl_chunks = new AsyncLock();
 		this._nb_threshold = gc_buffer.threshold || Infinity;
 		this._f_notify = gc_buffer.notify || null;
 	}
@@ -48,7 +50,7 @@ module.exports = class AsyncBuffer {
 	}
 
 	/**
-	 * Clear all cached chunks
+	 * Clear all cached chunks (including hardened one)
 	 * @return {ClearedReport} how many chunks were cleared and their cumulative size in bytes.
 	 */
 	async clear() {
@@ -61,17 +63,60 @@ module.exports = class AsyncBuffer {
 			footprint: this._cb_footprint,
 		};
 
-		// drop chunks
+		// reset chunks
 		this._a_chunks.length = 0;
+		this._a_hardened.length = 0;
 
 		// update footprint
 		this._cb_footprint = 0;
+		this._cb_hardened = 0;
 
 		// release chunks lock
 		f_release();
 
 		// cleared report
 		return g_report;
+	}
+
+	/**
+	 * Reset the chunks to the last hardened snapshot (if no snapshot, same as calling `clear()`)
+	 * @return {DiffReport} the difference of the number of chunks and their cumulative size in bytes
+	 *   as a result of this operation.
+	 */
+	async reset() {
+		// acquire chunks lock
+		let f_release = await this._kl_chunks.acquire();
+
+		// cleared report
+		let g_report = {
+			chunks: this._a_chunks.length - this._a_hardened.length,
+			footprint: this._cb_footprint - this._cb_hardened,
+		};
+
+		// reset chunks
+		this._a_chunks = this._a_hardened.slice();
+
+		// update footprint
+		this._cb_footprint = this._cb_hardened;
+
+		// release chunks lock
+		f_release();
+
+		// cleared report
+		return g_report;
+	}
+
+
+	/**
+	 * Preserve a snapshot of the current chunks so that future calls to `reset()` will
+	 * only clear the difference.
+	 */
+	harden() {
+		// copy current chunks array
+		this._a_hardened = this._a_chunks.slice();
+
+		// save footprint
+		this._cb_hardened = this._cb_footprint;
 	}
 
 
