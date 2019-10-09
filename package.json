@@ -24,7 +24,7 @@
     "jsdoc-to-markdown": "^5.0.1"
   },
   "dependencies": {
-    "bkit": "^1.4.1",
+    "bkit": "^2.0.0",
     "content-type": "^1.0.4",
     "isomorphic-fetch": "^2.2.1"
   }

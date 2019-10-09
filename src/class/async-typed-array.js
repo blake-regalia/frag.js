@@ -45,6 +45,10 @@ class AsyncTypedArrayCursor {
 		return this._b_finished;
 	}
 
+	get index() {
+		return this._it_curr + this._it_local;
+	}
+
 	async next() {
 		let at_cache = this._at_cache;
 		let it_local = this._it_local;
