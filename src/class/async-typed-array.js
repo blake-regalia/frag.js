@@ -58,6 +58,9 @@ class AsyncTypedArrayCursor {
 			// refresh cache
 			at_cache = this._at_cache = await AsyncTypedArrayCursor$refresh(this);
 
+			// update cursor
+			this._it_curr += it_local;
+
 			// reset read position
 			it_local = 0;
 		}
@@ -67,6 +70,11 @@ class AsyncTypedArrayCursor {
 
 		// update read position
 		this._it_local = it_local + 1;
+
+		// end of list
+		if(this._it_hi === this._it_curr + this._it_local) {
+			this._b_finished = true;
+		}
 
 		// return value
 		return x_value;

@@ -39,8 +39,11 @@ async function AsyncDecoder$refresh(k_self, nb_need=1) {
 		let kav = k_self._kav;
 		let nb_chunk = k_self._nb_chunk;
 
-		// lock before going async
-		k_self._at_cache = null;
+		// lower bound of request range
+		let ib_lo = k_self.read;
+
+		// // lock before going async
+		// k_self._at_cache = null;
 
 		// fetch size
 		let nb_fetch = Math.min(kav.cached(ib_read) || nb_chunk, nb_chunk);
@@ -49,10 +52,12 @@ async function AsyncDecoder$refresh(k_self, nb_need=1) {
 		let ib_advance = ib_read + Math.max(nb_fetch, nb_need);
 
 		// reload cache
-		let at_cache = k_self._at_cache = await kav.slice(ib_read, ib_advance);  // eslint-disable-line require-atomic-updates
+		let at_cache = k_self._at_cache = await kav.slice(ib_lo, ib_advance);  // eslint-disable-line require-atomic-updates
 
 		// update pointer
-		k_self._ib_read = ib_read + at_cache.length;  // eslint-disable-line require-atomic-updates
+		// k_self._ib_read = ib_read + at_cache.length;  // eslint-disable-line require-atomic-updates
+		// k_self._ib_read = ib_advance;  // eslint-disable-line require-atomic-updates
+		k_self._ib_read = ib_lo + at_cache.length;  // eslint-disable-line require-atomic-updates
 	}
 
 	// fetch cache
@@ -305,11 +310,8 @@ module.exports = class AsyncDecoder {
 		// string length
 		let nb_string = await AsyncDecoder$vuint(this);
 
-		// bytes needed
-		let nb_refresh = nb_string - this._at_cache.length;
-
 		// refresh cache
-		let at_cache = await AsyncDecoder$refresh(this, nb_refresh);
+		let at_cache = await AsyncDecoder$refresh(this, nb_string);
 
 		// update cache
 		this._at_cache = at_cache.slice(nb_string);
