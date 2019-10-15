@@ -14,16 +14,19 @@ async function AsyncTypedArrayCursor$refresh(k_self) {
 	let nt_fetch = Math.max(1, k_self._nb_chunk>>ns_element);
 
 	// position of current cache
-	let it_curr = k_self._it_curr;
+	let it_index = k_self.index;
 
 	// position of next cache
-	let it_next = Math.min(it_curr+nt_fetch, k_self._it_hi);
+	let it_next = Math.min(it_index+nt_fetch, k_self._it_hi);
 
 	// fetch slice
-	let at_slice = await kav.slice(it_curr, it_next);
+	let at_slice = await kav.slice(it_index, it_next);
 
 	// update cache position
-	this._it_curr = it_next;
+	this._it_curr = it_index;
+
+	// reset local position
+	this._it_local = 0;
 
 	// return slice
 	return at_slice;
@@ -54,12 +57,9 @@ class AsyncTypedArrayCursor {
 		let it_local = this._it_local;
 
 		// ran out of cache
-		if(it_local >= at_cache.length-1) {
+		if(it_local >= at_cache.length) {
 			// refresh cache
 			at_cache = this._at_cache = await AsyncTypedArrayCursor$refresh(this);
-
-			// update cursor
-			this._it_curr += it_local;
 
 			// reset read position
 			it_local = 0;
