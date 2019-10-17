@@ -106,7 +106,7 @@ class AsyncTypedArray {
 	 * @param  {TypedArrayIndex} it_at - position of element to access
 	 * @return {Uint} the element value
 	 */
-	async at(it_at) {
+	async access(it_at) {
 		// ref shift-per-element
 		let ns_element = this._ns_element;
 
