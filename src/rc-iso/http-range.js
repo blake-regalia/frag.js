@@ -128,7 +128,7 @@ module.exports = class ResourceConnection_HttpRange extends ResourceConnection {
 			mode: this._s_mode,
 			redirect: 'error',
 			headers: Object.assign({}, this._h_headers, {
-				Range: 'bytes='+i_lo+'-'+i_hi,
+				Range: 'bytes='+i_lo+'-'+(i_hi-1),
 			}),
 		}));
 
@@ -142,7 +142,7 @@ module.exports = class ResourceConnection_HttpRange extends ResourceConnection {
 		let d_res = await ResourceConnection_HttpRange$fetch_content(this, new Request(this._p_src, {
 			method: 'GET',
 			headers: Object.assign({}, this._h_headers, {
-				Range: 'bytes='+a_ranges.map(a => a[0]+'-'+a[1]).join(', '),
+				Range: 'bytes='+a_ranges.map(a => a[0]+'-'+(a[1]-1)).join(', '),
 			}),
 		}));
 
@@ -161,9 +161,26 @@ module.exports = class ResourceConnection_HttpRange extends ResourceConnection {
 			throw new ResourceConnectionError.HttpHeader(d_headers, `expected 'Content-Type: multipart/byteranges; ...', failed to parse '${s_content_type}'`);
 		}
 
-		// bad content-type
+		// not multipart content-type
 		if('multipart/byteranges' !== g_content_type.type) {
-			throw new ResourceConnectionError.HttpHeader(d_headers, `expected 'Content-Type: multipart/byteranges; ...', found '${g_content_type.type}' instead`);
+			// octet-stream fallback
+			if('application/octet-stream' === g_content_type.type) {
+				// more than one range was requested
+				if(a_ranges.length > 1) {
+					throw new ResourceConnectionError.HttpHeader(d_headers, `requested ${a_ranges.length} ranges and so expected 'Content-Type: multipart/byteranges; ...', but received '${g_content_type.type}' instead`);
+				}
+				// single range: OK
+				else {
+					// done
+					return [
+						// load entire respone
+						new Uint8Array(await d_res.arrayBuffer()),
+					];
+				}
+			}
+
+			// invalid response type
+			throw new ResourceConnectionError.HttpHeader(d_headers, `expected 'Content-Type: multipart/byteranges; ...' or 'Content-Type: application/octet-stream; ...', found '${g_content_type.type}' instead`);
 		}
 
 		// missing boundary
