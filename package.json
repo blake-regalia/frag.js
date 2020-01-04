@@ -19,15 +19,15 @@
   },
   "devDependencies": {
     "emk": "^1.7.2",
-    "eslint": "^6.4.0",
-    "eslint-plugin-chai-expect": "^2.0.1",
-    "eslint-plugin-chai-friendly": "^0.4.1",
+    "eslint": "^6.8.0",
+    "eslint-plugin-chai-expect": "^2.1.0",
+    "eslint-plugin-chai-friendly": "^0.5.0",
     "eslint-plugin-jmacs": "^1.4.0",
     "jmacs": "^1.4.0",
-    "jsdoc-to-markdown": "^5.0.1"
+    "jsdoc-to-markdown": "^5.0.3"
   },
   "dependencies": {
-    "bkit": "^2.0.0",
+    "bkit": "^2.1.0",
     "content-type": "^1.0.4",
     "isomorphic-fetch": "^2.2.1"
   }
