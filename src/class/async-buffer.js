@@ -431,13 +431,13 @@ module.exports = class AsyncBuffer {
 			data: at_merge,
 		};
 
-		// invalid
-		let at_check = await this._krc.fetch(ib_merge_lo, ib_merge_hi);
-		for(let ib_check=0; ib_check<at_check.length; ib_check++) {
-			if(at_check[ib_check] !== at_merge[ib_check]) {
-				debugger;
-			}
-		}
+		// // invalid
+		// let at_check = await this._krc.fetch(ib_merge_lo, ib_merge_hi);
+		// for(let ib_check=0; ib_check<at_check.length; ib_check++) {
+		// 	if(at_check[ib_check] !== at_merge[ib_check]) {
+		// 		debugger;
+		// 	}
+		// }
 
 		// merge chunks
 		a_chunks.splice(i_merge_lo, i_merge_hi-i_merge_lo, g_merge);

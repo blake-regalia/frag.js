@@ -25,6 +25,10 @@ class ResourceConnectionError_HttpStatus extends ResourceConnectionError {
 		this._d_res = d_res;
 	}
 
+	get statusCode() {
+		return this._d_res.status;
+	}
+
 	text() {
 		return this._d_res.text();
 	}

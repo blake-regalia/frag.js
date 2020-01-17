@@ -76,6 +76,10 @@ async function ResourceConnection_HttpRange$fetch_content(k_self, d_req) {
 	return d_res;
 }
 
+async function ResourceConnection_HttpRange$batch_downgrade(a_ranges) {
+	return await Promise.all(a_ranges.map(a => this.fetch(a[0], a[1])));
+}
+
 
 module.exports = class ResourceConnection_HttpRange extends ResourceConnection {
 	constructor(p_src, h_headers={}) {
@@ -138,13 +142,37 @@ module.exports = class ResourceConnection_HttpRange extends ResourceConnection {
 
 	// direct fetch of multiple ranges
 	async batch(a_ranges) {
+		// abort controller
+		let dac_batch = new AbortController();
+
 		// fetch ranges
-		let d_res = await ResourceConnection_HttpRange$fetch_content(this, new Request(this._p_src, {
-			method: 'GET',
-			headers: Object.assign({}, this._h_headers, {
-				Range: 'bytes='+a_ranges.map(a => a[0]+'-'+(a[1]-1)).join(', '),
-			}),
-		}));
+		let d_res;
+		try {
+			d_res = await ResourceConnection_HttpRange$fetch_content(this, new Request(this._p_src, {
+				method: 'GET',
+				headers: Object.assign({}, this._h_headers, {
+					Range: 'bytes='+a_ranges.map(a => a[0]+'-'+(a[1]-1)).join(', '),
+				}),
+				signal: dac_batch.signal,
+			}));
+		}
+		catch(e_fetch) {
+			// 200 HTTP status code
+			if(e_fetch instanceof ResourceConnectionError.HttpStatus && 200 === e_fetch.statusCode) {
+				// abort request
+				dac_batch.abort();
+
+				// change batch mode
+				this.batch = ResourceConnection_HttpRange$batch_downgrade;
+
+				// retry
+				return this.batch(a_ranges);
+			}
+			// other error; throw
+			else {
+				throw e_fetch;
+			}
+		}
 
 		// ref headers
 		let d_headers = d_res.headers;
