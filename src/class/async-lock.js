@@ -1,9 +1,12 @@
+// backwards-compatibility with node.js v < 11.0
+const next_tick = 'undefined' === typeof queueMicrotask? process.nextTick: queueMicrotask;
+
 // release the lock
 function AsyncLock$_release() {
 	// at least one promise waiting for lock
 	if(this._a_awaits.length) {
 		// queue behind current tick
-		queueMicrotask(() => {
+		next_tick(() => {
 			// resolve promise
 			this._a_awaits.shift()(this._f_release);
 		});
