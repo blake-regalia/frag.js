@@ -3,10 +3,10 @@ function AsyncLock$_release() {
 	// at least one promise waiting for lock
 	if(this._a_awaits.length) {
 		// queue behind current tick
-		setTimeout(() => {
+		queueMicrotask(() => {
 			// resolve promise
 			this._a_awaits.shift()(this._f_release);
-		}, 0);
+		});
 	}
 	// otherwise, unlock
 	else {
