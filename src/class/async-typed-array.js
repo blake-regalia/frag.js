@@ -81,6 +81,31 @@ class AsyncTypedArrayCursor {
 	}
 }
 
+// [default] nl_out = atu8_src.byteLength >>>
+//   Math.log2(dc_typed_array.BYTES_PER_ELEMENT)
+function memaligned(atu8_src, dc_typed_array, nl_out) {
+	// buffer byte offset of source
+	let ib_offset = atu8_src.byteOffset;
+
+	// not mem-aligned!
+	if(ib_offset % dc_typed_array.BYTES_PER_ELEMENT) {
+		// allocate new mem-aligned segment
+		let ab_aligned = new ArrayBuffer(atu8_src.byteLength);
+
+		// create byte-view over segment
+		let atu8_aligned = new Uint8Array(ab_aligned);
+
+		// copy contents over
+		atu8_aligned.set(atu8_src);
+
+		// create typed array instance
+		return new dc_typed_array(ab_aligned);
+	}
+
+	// mem-aligned
+	return new dc_typed_array(atu8_src.buffer, ib_offset, nl_out);
+}
+
 /**
  * Asynchronous virtual TypedArray
  */
@@ -90,7 +115,41 @@ class AsyncTypedArray {
 		this._dc_typed_array = dc_typed_array;
 		this._nl_items = nl_items;
 		let ns_element = this._ns_element = Math.log2(dc_typed_array.BYTES_PER_ELEMENT);
-		this._f_reader_uint = bkit.readerUintLE(1 << ns_element);
+
+		this._b_prefer_reader = false;
+		switch(dc_typed_array.name) {
+			// int
+			case 'Int8Array':
+			case 'Int16Array':
+			case 'Int32Array': {
+				this._f_reader = bkit.readerIntLE(1 << ns_element);
+				this._b_prefer_reader = true;
+				break;
+			}
+
+			// uint
+			case 'Uint8Array':
+			case 'Uint8ClampedArray':
+			case 'Uint16Array':
+			case 'Uint32Array': {
+				this._f_reader = bkit.readerUintLE(1 << ns_element);
+				this._b_prefer_reader = true;
+				break;
+			}
+
+			// float
+			case 'Float32Array':
+			case 'Float64Array': {
+				this._f_reader = (atu8_src, it_access) => memaligned(atu8_src, dc_typed_array)[it_access];
+				break;
+			}
+
+			// TODO: implement BigInt64 and BigUint64
+
+			default: {
+				throw new Error(`AsyncTypedArray class not supported: '${dc_typed_array.name}'`);
+			}
+		}
 	}
 
 	get size() {
@@ -125,7 +184,7 @@ class AsyncTypedArray {
 		let at_slice = await this._kav_items.slice(ib_lo, ib_lo+nb_element);
 
 		// read uint
-		return this._f_reader_uint(at_slice, 0);
+		return this._f_reader(at_slice, 0);
 
 		// {
 		// 	// create data view of slice
@@ -160,12 +219,18 @@ class AsyncTypedArray {
 		// number of bytes per element
 		let nb_element = 1 << ns_element;
 
-		// read uints
-		let f_reader_uint = this._f_reader_uint;
-		return new this._dc_typed_array([
-			f_reader_uint(at_slice, 0),
-			f_reader_uint(at_slice, nb_element),
-		]);
+		// prefer reader
+		if(this._b_prefer_reader) {
+			let f_reader = this._f_reader;
+			return new this._dc_typed_array([
+				f_reader(at_slice, 0),
+				f_reader(at_slice, nb_element),
+			]);
+		}
+		// memaligned cast
+		else {
+			return memaligned(at_slice, this._dc_typed_array, 2);
+		}
 
 		// // create data view of slice
 		// let av_slice = new DataView(at_slice.buffer, at_slice.byteOffset, at_slice.byteLength);
@@ -190,29 +255,32 @@ class AsyncTypedArray {
 		let ns_element = this._ns_element;
 		let at_slice = await this._kav_items.slice(it_lo<<ns_element, it_hi<<ns_element);
 
-		// ref typed array constructor
-		let dc_typed_array = this._dc_typed_array;
+		// mem-align
+		return memaligned(at_slice, this._dc_typed_array, at_slice.byteLength >>> ns_element);
 
-		// buffer byte offset of slice
-		let ib_offset = at_slice.byteOffset;
+		// // ref typed array constructor
+		// let dc_typed_array = this._dc_typed_array;
 
-		// not mem-aligned!
-		if(ib_offset % dc_typed_array.BYTES_PER_ELEMENT) {
-			// allocate new mem-aligned segment
-			let ab_aligned = new ArrayBuffer(at_slice.byteLength);
+		// // buffer byte offset of slice
+		// let ib_offset = at_slice.byteOffset;
 
-			// create byte-view over segment
-			let atu8_aligned = new Uint8Array(ab_aligned);
+		// // not mem-aligned!
+		// if(ib_offset % dc_typed_array.BYTES_PER_ELEMENT) {
+		// 	// allocate new mem-aligned segment
+		// 	let ab_aligned = new ArrayBuffer(at_slice.byteLength);
 
-			// copy contents over
-			atu8_aligned.set(at_slice);
+		// 	// create byte-view over segment
+		// 	let atu8_aligned = new Uint8Array(ab_aligned);
 
-			// create typed array instance
-			return new dc_typed_array(ab_aligned);
-		}
+		// 	// copy contents over
+		// 	atu8_aligned.set(at_slice);
 
-		// mem-aligned
-		return new this._dc_typed_array(at_slice.buffer, ib_offset, at_slice.byteLength >>> ns_element);
+		// 	// create typed array instance
+		// 	return new dc_typed_array(ab_aligned);
+		// }
+
+		// // mem-aligned
+		// return new dc_typed_array(at_slice.buffer, ib_offset, at_slice.byteLength >>> ns_element);
 	}
 
 	/**
