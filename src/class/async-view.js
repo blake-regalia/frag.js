@@ -102,6 +102,18 @@ module.exports = class AsyncView {
 	}
 
 	/**
+	 * Access a single byte from this instance's AsyncBuffer.
+	 * @param  {BytePosition} ib_at - position to access (relative to this
+	 *         instance's current view range)
+	 * @return {Byte} the value of the byte [0-255]
+	 */
+	async access(ib_at) {
+		let ib_lo = this._ib_start + ib_at;
+
+		return (await this._kab.slice(ib_lo, ib_lo+1))[0];
+	}
+
+	/**
 	 * Extract a list of byte ranges from this instance's AsyncBuffer.
 	 * @param  {Array<BytePositionRange>} a_ranges - list of byte ranges (relative to this instance's current view range)
 	 * @return {Array<Uint8Array>} corresponding list of sliced data buffers
